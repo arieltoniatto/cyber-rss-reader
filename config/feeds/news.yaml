@@ -1,0 +1,31 @@
+category: news
+
+feeds:
+
+#  - name: BleepingComputer
+#    url: https://www.bleepingcomputer.com/feed/
+#    enabled: true
+
+#  - name: Bleeping Computer (forum)
+#    url: https://www.bleepingcomputer.com/forum45.xml
+#    enabled: true
+
+  - name: CyberScoop
+    url: https://www.cyberscoop.com/feed
+    enabled: true
+
+  - name: Dark Reading
+    url: https://www.darkreading.com/rss.xml
+    enabled: true
+
+  - name: Intelligence Online
+    url: https://feeds.feedburner.com/IntelligenceOnline
+    enabled: true
+
+  - name: KrebsOnSecurity
+    url: https://krebsonsecurity.com/feed/
+    enabled: true
+
+  - name: Example Disabled Feed
+    url: https://example.com/rss.xml
+    enabled: false

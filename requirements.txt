@@ -1,0 +1,56 @@
+# RSS Parsing
+feedparser>=6.0.11
+
+# HTTP Client
+httpx>=0.28.1
+
+# Configuration
+PyYAML>=6.0.2
+pydantic>=2.11.0
+
+# CLI
+typer>=0.16.0
+rich>=14.0.0
+
+# Search
+rapidfuzz>=3.13.0
+
+# Topic Extraction
+scikit-learn>=1.7.0
+
+# =============================================================================
+# Testing
+# =============================================================================
+
+pytest>=8.4.0
+pytest-asyncio>=1.1.0
+pytest-mock>=3.14.0
+pytest-cov>=6.2.0
+
+# =============================================================================
+# Code Quality
+# =============================================================================
+
+black>=25.1.0
+ruff>=0.12.0
+mypy>=1.17.0
+
+# =============================================================================
+# Future (Currently Not Used)
+# Uncomment as features are implemented
+# =============================================================================
+
+# SQLAlchemy>=2.0
+# alembic>=1.16
+
+# FastAPI>=0.116
+# uvicorn[standard]>=0.35
+
+# yake>=0.6
+# rake-nltk>=1.0
+# keybert>=0.9
+# sentence-transformers>=5.0
+
+# elasticsearch>=9.0
+
+# docker>=7.1
