@@ -1,4 +1,4 @@
-```markdown
+
 # Cybersecurity RSS Reader
 
 A modular, terminal-based cybersecurity RSS feed reader built with Python 3.12+.
@@ -52,9 +52,6 @@ The project is designed with clean architecture principles, separation of concer
 The project follows a modular architecture based on separation of responsibilities.
 
 High-level data flow:
-
-```
-
 ```
             +----------------+
             | YAML Feeds     |
@@ -84,14 +81,14 @@ High-level data flow:
       +-------------+-------------+
       |                           |
       v                           v
-```
+
 
 +----------------+          +----------------+
 | Storage Layer  |          | Search Engine  |
 | JSON / SQLite  |          | Filters/Fuzzy  |
 +----------------+          +----------------+
 
-```
+
                     |
                     v
 
@@ -99,9 +96,9 @@ High-level data flow:
             | Terminal CLI |
             | Typer + Rich |
             +---------------+
-```
 
 ```
+
 
 ---
 
@@ -674,5 +671,4 @@ Features:
 
 MIT License
 
-```
-```
+
