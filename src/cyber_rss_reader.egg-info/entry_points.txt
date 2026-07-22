@@ -1,0 +1,2 @@
+[console_scripts]
+rss = app.main:main

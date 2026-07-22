@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyber-rss-reader"
+version = "0.1.0"
+description = "Cybersecurity RSS Reader"
+requires-python = ">=3.12"
+
+[project.scripts]
+rss = "app.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
