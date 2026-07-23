@@ -7,11 +7,20 @@ from cli.dependencies import CLIServices
 def register(app: typer.Typer, services: CLIServices) -> None:
 
     @app.command()
-    def update() -> None:
+    def update(
+        refresh: bool = typer.Option(
+            False,
+            "--refresh",
+            "-r",
+            help="Ignore cache and download all feeds again.",
+        ),
+    ) -> None:
         typer.echo("Updating feeds...")
 
         result = asyncio.run(
-            services.article_service.update()
+            services.article_service.update(
+                force_refresh=refresh,
+            )
         )
 
         typer.echo()

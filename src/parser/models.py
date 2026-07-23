@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import datetime
 
 
 @dataclass(slots=True, frozen=True)
@@ -13,13 +13,11 @@ class Article:
 
     title: str
     source: str
-    category: str
-
-    author: str | None
-    published: date | None
-
-    summary: str | None
-
+    summary: str
     url: str
+
+    category: str | None = None
+    author: str | None = None
+    published: datetime | None = None
 
     tags: list[str] = field(default_factory=list)

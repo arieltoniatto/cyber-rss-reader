@@ -1,4 +1,4 @@
-```markdown
+
 # Cybersecurity RSS Reader
 
 A modular, terminal-based cybersecurity RSS feed reader built with Python 3.12+.
@@ -675,4 +675,4 @@ Features:
 MIT License
 
 ```
-```
+

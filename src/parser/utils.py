@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -58,10 +58,14 @@ def parse_published(entry) -> datetime | None:
     )
 
     if parsed:
-        return date(
+        return datetime(
             year=parsed.tm_year,
             month=parsed.tm_mon,
             day=parsed.tm_mday,
+            hour=parsed.tm_hour,
+            minute=parsed.tm_min,
+            second=parsed.tm_sec,
+            tzinfo=timezone.utc,
         )
 
     value = (
@@ -79,3 +83,22 @@ def parse_published(entry) -> datetime | None:
             return None
 
     return None
+
+def parse_tags(entry) -> list[str]:
+    """
+    Extract tags/categories from a feedparser entry.
+
+    Supports multiple RSS/Atom formats.
+    """
+
+    tags: list[str] = []
+
+    # feedparser usually exposes tags as a list of dict-like objects
+    for tag in entry.get("tags", []):
+        term = tag.get("term")
+
+        if term:
+            tags.append(term.strip())
+
+    # Remove duplicates while preserving order
+    return list(dict.fromkeys(tags))

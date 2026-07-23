@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from feeds.models import FeedResult
-from parser.utils import parse_published
+from parser.utils import parse_published, parse_tags
 
 from .models import Article
 from .utils import (
@@ -72,7 +72,7 @@ class RSSParser:
                     )
                     or "",
 
-                    tags=extract_tags(entry),
+                    tags=parse_tags(entry),
                 )
 
                 articles.append(article)
