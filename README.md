@@ -53,7 +53,6 @@ The project follows a modular architecture based on separation of responsibiliti
 
 High-level data flow:
 
-```
 
 ```
             +----------------+
@@ -84,14 +83,12 @@ High-level data flow:
       +-------------+-------------+
       |                           |
       v                           v
-```
 
 +----------------+          +----------------+
 | Storage Layer  |          | Search Engine  |
 | JSON / SQLite  |          | Filters/Fuzzy  |
 +----------------+          +----------------+
 
-```
                     |
                     v
 
@@ -101,7 +98,7 @@ High-level data flow:
             +---------------+
 ```
 
-```
+
 
 ---
 
