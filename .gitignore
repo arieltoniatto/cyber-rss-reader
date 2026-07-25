@@ -3,3 +3,9 @@
 *.pyc
 /__pycache__/
 /cyber_rss_reader.egg-info/
+
+cache/*
+!cache/.gitkeep
+
+logs/*
+!logs/.gitkeep

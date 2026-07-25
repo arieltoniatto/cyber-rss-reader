@@ -6,6 +6,7 @@ from feeds.fetcher import RSSFetcher
 from parser.models import Article
 from parser.parser import RSSParser
 from storage.interfaces import ArticleRepository
+from services.exceptions import InvalidCategoryError, InvalidSourceError
 from services.models import UpdateResult
 
 
@@ -30,6 +31,64 @@ class ArticleService:
         self._repository = repository
         self._fetcher = fetcher
         self._parser = parser
+
+    def _available_categories(
+            self,
+            articles: list[Article],
+        ) -> list[str]:
+
+        return sorted(
+            {
+                article.category
+                for article in articles
+                if article.category
+            }
+        )
+
+    def _available_sources(
+            self,
+            articles: list[Article],
+        ) -> list[str]:
+
+        return sorted(
+            {
+                article.source
+                for article in articles
+                if article.source
+            }
+        )
+
+    def _validate_category(
+        self,
+        category: str,
+        articles: list[Article],
+    ) -> None:
+        available = self._available_categories(articles)
+
+        if category not in available:
+            raise InvalidCategoryError(
+                f"Unknown category: {category}.\n"
+                f"Available categories: {', '.join(available)}"
+            )
+
+
+    def _validate_source(
+        self,
+        source: str,
+        articles: list[Article],
+    ) -> None:
+        available = self._available_sources(articles)
+
+        available_lookup = {
+            value.lower(): value
+            for value in available
+        }
+
+        if source.lower() not in available_lookup:
+            raise InvalidSourceError(
+                f"Unknown source: {source}.\n"
+                f"Available sources: {', '.join(available)}"
+            )
 
     async def update(
         self,
@@ -92,47 +151,59 @@ class ArticleService:
 
     async def latest(
         self,
-        *,
         limit: int = 20,
+        category: str | None = None,
     ) -> list[Article]:
-        """
-        Return newest cached articles.
-        """
-
         articles = self._repository.load()
 
-        articles.sort(
-            key=lambda article: (
-                article.published is None,
-                article.published,
-            ),
-            reverse=True,
-        )
+
+        if category is not None:
+            self._validate_category(category, articles)
+
+            articles = [
+                article
+                for article in articles
+                if article.category == category
+            ]
 
         return articles[:limit]
 
     async def by_source(
         self,
         source: str,
+        limit: int = 20,
     ) -> list[Article]:
 
-        source = source.lower()
+        articles = self._repository.load()
 
-        return [
+        self._validate_source(source, articles)
+
+        source_lower = source.lower()
+
+        filtered_articles = [
             article
-            for article in self._repository.load()
-            if article.source.lower() == source
+            for article in articles
+            if article.source.lower() == source_lower
         ]
+
+        return filtered_articles[:limit]
 
     async def by_category(
         self,
         category: str,
+        limit: int = 20,
     ) -> list[Article]:
 
-        category = category.lower()
+        articles = self._repository.load()
 
-        return [
+        self._validate_category(category, articles)
+
+        category_lower = category.lower()
+
+        filtered_articles = [
             article
-            for article in self._repository.load()
-            if article.category.lower() == category
+            for article in articles
+            if article.category.lower() == category_lower
         ]
+
+        return filtered_articles[:limit]

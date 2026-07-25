@@ -4,9 +4,12 @@ from app.container import ApplicationContainer
 
 from cli.app import create_cli
 from cli.dependencies import CLIServices
+from config.paths import ensure_runtime_directories
 
 
 def main() -> None:
+
+    ensure_runtime_directories()
 
     container = ApplicationContainer.build()
 

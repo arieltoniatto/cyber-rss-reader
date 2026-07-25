@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from config.paths import ARTICLE_CACHE_FILE, LOG_DIRECTORY, DATA_DIRECTORY, FEED_DIRECTORY
 from config.loader import ConfigLoader
 from config.models import FeedConfiguration
 
@@ -26,11 +27,10 @@ from topics.extractor import TopicExtractionService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-DEFAULT_FEEDS_DIR = PROJECT_ROOT / "src" / "config" / "feeds"
-DEFAULT_CACHE_FILE = PROJECT_ROOT / "data" / "articles.json"
-DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_CACHE_FILE = DEFAULT_DATA_DIR / "articles.json"
-DEFAULT_LOGS_DIR = PROJECT_ROOT / "logs"
+DEFAULT_FEEDS_DIR = FEED_DIRECTORY
+DEFAULT_CACHE_FILE = ARTICLE_CACHE_FILE
+DEFAULT_DATA_DIR = DATA_DIRECTORY
+DEFAULT_LOGS_DIR = LOG_DIRECTORY
 
 
 @dataclass(slots=True)
@@ -113,7 +113,7 @@ class ApplicationContainer:
         ################################################################
 
         repository = JsonArticleRepository(
-            cache_file=cache_file,
+            cache_file=ARTICLE_CACHE_FILE,
             cache_duration=cache_duration,
         )
 

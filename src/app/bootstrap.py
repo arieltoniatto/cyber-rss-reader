@@ -4,6 +4,8 @@ import logging
 from datetime import timedelta
 from pathlib import Path
 
+from config.paths import ARTICLE_CACHE_FILE, FEED_DIRECTORY
+
 from config.loader import ConfigLoader
 
 from config.models import FeedConfiguration
@@ -41,8 +43,8 @@ def configure_logging(
 
 def bootstrap(
     *,
-    config_directory: Path = Path("config/feeds"),
-    cache_file: Path = Path("data/articles.json"),
+    config_directory: Path = FEED_DIRECTORY,
+    cache_file: Path = ARTICLE_CACHE_FILE,
     cache_duration: timedelta = timedelta(hours=6),
 ) -> ApplicationContainer:
     """
