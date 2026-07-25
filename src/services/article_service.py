@@ -8,7 +8,7 @@ from parser.models import Article
 from parser.parser import RSSParser
 from storage.interfaces import ArticleRepository
 from services.exceptions import InvalidCategoryError, InvalidSourceError
-from services.models import UpdateResult
+from services.models import LatestQuery, UpdateResult
 
 
 logger = logging.getLogger(__name__)
@@ -152,22 +152,25 @@ class ArticleService:
 
     async def latest(
         self,
-        limit: int = 20,
-        category: str | None = None,
+        query: LatestQuery,
     ) -> list[Article]:
 
         articles = self._repository.load()
 
-        if category is not None:
-            self._validate_category(category, articles)
-
-            category_lower = category.lower()
-
+        if query.category:
+            self._validate_category(query.category, articles)
             articles = [
                 article
                 for article in articles
-                if article.category
-                and article.category.lower() == category_lower
+                if article.category.lower() == query.category.lower()
+            ]
+
+        if query.source:
+            self._validate_source(query.source, articles)
+            articles = [
+                article
+                for article in articles
+                if article.source.lower() == query.source.lower()
             ]
 
         articles.sort(
@@ -175,7 +178,7 @@ class ArticleService:
             reverse=True,
         )
 
-        return articles[:limit]
+        return articles[: query.limit]
 
     async def by_source(
         self,
