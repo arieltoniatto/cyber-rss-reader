@@ -1,9 +1,0 @@
-app
-cli
-config
-feeds
-parser
-search
-services
-storage
-topics
