@@ -8,14 +8,8 @@ feeds:
     description: Open-source investigations and verification methods.
     category: osint
 
-  - name: OSINT Curious
-    url: https://osintcurio.us/feed/
-    enabled: true
-    description: OSINT techniques, tools, and investigations.
-    category: osint
-
   - name: Sector035
-    url: https://sector035.nl/feed
+    url: https://sector035.nl/articles.rss
     enabled: true
     description: OSINT workflows, tools, and weekly summaries.
     category: osint
@@ -26,8 +20,3 @@ feeds:
     description: OSINT tools, privacy, and investigative methods.
     category: osint
 
-  - name: GIJN
-    url: https://gijn.org/feed/
-    enabled: true
-    description: Investigative research and open-source methods.
-    category: osint

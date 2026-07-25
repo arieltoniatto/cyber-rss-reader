@@ -3,7 +3,7 @@ category: threat_intelligence
 feeds:
 
   - name: Cisco Talos
-    url: https://blog.talosintelligence.com/feeds/posts/default
+    url: https://feeds.feedburner.com/feedburner/Talos
     enabled: true
     description: Threat intelligence, malware campaigns, vulnerabilities, and actor research.
     category: threat_intelligence

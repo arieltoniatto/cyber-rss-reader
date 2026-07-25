@@ -33,7 +33,7 @@ feeds:
     category: government
 
   - name: Australian Cyber Security Centre
-    url: https://www.cyber.gov.au/rss
+    url: https://www.cyber.gov.au/rss/alerts
     enabled: true
     description: Australian cybersecurity alerts and guidance.
     category: government

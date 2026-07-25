@@ -14,20 +14,8 @@ feeds:
     description: Incident handling observations and technical diaries.
     category: dfir
 
-  - name: Magnet Forensics Blog
-    url: https://www.magnetforensics.com/blog/feed/
-    enabled: true
-    description: Digital forensics and incident response.
-    category: dfir
-
   - name: Velociraptor Blog
     url: https://docs.velociraptor.app/blog/index.xml
     enabled: true
     description: Endpoint visibility, threat hunting, and DFIR.
-    category: dfir
-
-  - name: Kroll Cyber Risk
-    url: https://www.kroll.com/en/insights/publications/cyber/rss
-    enabled: true
-    description: Incident response and cyber-risk analysis.
     category: dfir
