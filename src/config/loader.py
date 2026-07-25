@@ -46,7 +46,7 @@ class ConfigLoader:
         try:
             with file.open("r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
-
+ 
             category = FeedCategory.model_validate(raw)
 
             category.feeds = [

@@ -1,0 +1,39 @@
+category: government
+
+feeds:
+
+  - name: CISA News
+    url: https://www.cisa.gov/news.xml
+    enabled: true
+    description: CISA news and public cybersecurity updates.
+    category: government
+
+  - name: CISA Cybersecurity Advisories
+    url: https://www.cisa.gov/cybersecurity-advisories/all.xml
+    enabled: true
+    description: US government cybersecurity advisories.
+    category: government
+
+  - name: NCSC UK
+    url: https://www.ncsc.gov.uk/api/1/services/v1/report-rss-feed.xml
+    enabled: true
+    description: UK NCSC reports, guidance, and advisories.
+    category: government
+
+  - name: CERT-EU
+    url: https://cert.europa.eu/publications/security-advisories-rss
+    enabled: true
+    description: CERT-EU security advisories.
+    category: government
+
+  - name: Canadian Centre for Cyber Security
+    url: https://www.cyber.gc.ca/api/cccs/rss/v1/get?feed=alerts_advisories
+    enabled: true
+    description: Canadian alerts and advisories.
+    category: government
+
+  - name: Australian Cyber Security Centre
+    url: https://www.cyber.gov.au/rss
+    enabled: true
+    description: Australian cybersecurity alerts and guidance.
+    category: government

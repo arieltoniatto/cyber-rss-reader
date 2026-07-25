@@ -1,0 +1,27 @@
+category: threat_hunting
+
+feeds:
+
+  - name: Red Canary
+    url: https://redcanary.com/blog/feed/
+    enabled: true
+    description: Threat detection, hunting, and adversary behavior.
+    category: threat_hunting
+
+  - name: SpecterOps
+    url: https://posts.specterops.io/feed
+    enabled: true
+    description: Adversary tradecraft and defensive research.
+    category: threat_hunting
+
+  - name: Black Hills Information Security
+    url: https://www.blackhillsinfosec.com/feed/
+    enabled: true
+    description: Threat hunting, penetration testing, and defense.
+    category: threat_hunting
+
+  - name: TrustedSec
+    url: https://trustedsec.com/feed
+    enabled: true
+    description: Offensive and defensive security research.
+    category: threat_hunting

@@ -1,0 +1,51 @@
+category: threat_intelligence
+
+feeds:
+
+  - name: Cisco Talos
+    url: https://blog.talosintelligence.com/feeds/posts/default
+    enabled: true
+    description: Threat intelligence, malware campaigns, vulnerabilities, and actor research.
+    category: threat_intelligence
+
+  - name: Unit 42
+    url: https://unit42.paloaltonetworks.com/feed/
+    enabled: true
+    description: Threat actor, malware, cloud, and incident-response research.
+    category: threat_intelligence
+
+  - name: Google Threat Intelligence
+    url: https://cloudblog.withgoogle.com/topics/threat-intelligence/rss/
+    enabled: true
+    description: Google Threat Intelligence and Mandiant research.
+    category: threat_intelligence
+
+  - name: Microsoft Security Blog
+    url: https://www.microsoft.com/en-us/security/blog/feed/
+    enabled: true
+    description: Microsoft threat intelligence and security research.
+    category: threat_intelligence
+
+  - name: SentinelLabs
+    url: https://www.sentinelone.com/labs/feed/
+    enabled: true
+    description: Threat research, malware analysis, and actor tracking.
+    category: threat_intelligence
+
+  - name: ESET WeLiveSecurity
+    url: https://www.welivesecurity.com/en/rss/feed/
+    enabled: true
+    description: Threat research and malware campaign analysis.
+    category: threat_intelligence
+
+  - name: Securelist
+    url: https://securelist.com/feed/
+    enabled: true
+    description: Kaspersky threat research and malware analysis.
+    category: threat_intelligence
+
+  - name: Check Point Research
+    url: https://research.checkpoint.com/feed/
+    enabled: true
+    description: Threat campaigns, vulnerabilities, and malware research.
+    category: threat_intelligence

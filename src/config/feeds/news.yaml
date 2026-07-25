@@ -5,27 +5,35 @@ feeds:
   - name: BleepingComputer
     url: https://www.bleepingcomputer.com/feed/
     enabled: true
-
-#  - name: Bleeping Computer (forum)
-#    url: https://www.bleepingcomputer.com/forum45.xml
-#    enabled: true
+    description: Cybersecurity news, incidents, vulnerabilities, and malware.
+    category: news
 
   - name: CyberScoop
-    url: https://www.cyberscoop.com/feed
+    url: https://cyberscoop.com/feed/
     enabled: true
+    description: Cybersecurity policy, operations, and threat reporting.
+    category: news
 
   - name: Dark Reading
     url: https://www.darkreading.com/rss.xml
     enabled: true
+    description: Enterprise security news and analysis.
+    category: news
 
-  - name: Intelligence Online
-    url: https://feeds.feedburner.com/IntelligenceOnline
+  - name: SecurityWeek
+    url: https://www.securityweek.com/feed/
     enabled: true
+    description: Cybersecurity news, vulnerabilities, and threat activity.
+    category: news
 
-  - name: KrebsOnSecurity
-    url: https://krebsonsecurity.com/feed/
+  - name: The Hacker News
+    url: https://feeds.feedburner.com/TheHackersNews
     enabled: true
+    description: Cybersecurity news and technical threat reporting.
+    category: news
 
-  - name: Example Disabled Feed
-    url: https://example.com/rss.xml
-    enabled: false
+  - name: The Record
+    url: https://therecord.media/feed
+    enabled: true
+    description: Cybercrime, nation-state activity, and security policy.
+    category: news

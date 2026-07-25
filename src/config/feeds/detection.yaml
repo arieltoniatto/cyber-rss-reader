@@ -1,0 +1,33 @@
+category: detection
+
+feeds:
+
+  - name: Elastic Security Labs
+    url: https://www.elastic.co/security-labs/rss/feed.xml
+    enabled: true
+    description: Detection rules, malware research, and threat hunting.
+    category: detection
+
+  - name: Splunk Security
+    url: https://www.splunk.com/en_us/blog/security.rss.xml
+    enabled: true
+    description: Detection engineering and security analytics.
+    category: detection
+
+  - name: SOC Prime
+    url: https://socprime.com/blog/feed/
+    enabled: true
+    description: Detection content and threat detection engineering.
+    category: detection
+
+  - name: Nextron Systems
+    url: https://www.nextron-systems.com/feed/
+    enabled: true
+    description: YARA, Sigma, compromise assessment, and detection research.
+    category: detection
+
+  - name: Detection Engineering
+    url: https://blog.detect.fyi/feed
+    enabled: true
+    description: Community detection-engineering articles.
+    category: detection

@@ -1,0 +1,33 @@
+category: osint
+
+feeds:
+
+  - name: Bellingcat
+    url: https://www.bellingcat.com/feed/
+    enabled: true
+    description: Open-source investigations and verification methods.
+    category: osint
+
+  - name: OSINT Curious
+    url: https://osintcurio.us/feed/
+    enabled: true
+    description: OSINT techniques, tools, and investigations.
+    category: osint
+
+  - name: Sector035
+    url: https://sector035.nl/feed
+    enabled: true
+    description: OSINT workflows, tools, and weekly summaries.
+    category: osint
+
+  - name: IntelTechniques Blog
+    url: https://inteltechniques.com/blog/feed/
+    enabled: true
+    description: OSINT tools, privacy, and investigative methods.
+    category: osint
+
+  - name: GIJN
+    url: https://gijn.org/feed/
+    enabled: true
+    description: Investigative research and open-source methods.
+    category: osint

@@ -1,0 +1,39 @@
+category: podcasts
+
+feeds:
+
+  - name: Risky Business
+    url: https://risky.biz/feeds/risky-business/
+    enabled: true
+    description: Cybersecurity news and analysis podcast.
+    category: podcasts
+
+  - name: SANS Internet Storm Center Daily Podcast
+    url: https://isc.sans.edu/podcast.xml
+    enabled: true
+    description: Daily cybersecurity threat briefing.
+    category: podcasts
+
+  - name: Darknet Diaries
+    url: https://feeds.megaphone.fm/darknetdiaries
+    enabled: true
+    description: Narrative stories about cybercrime and security.
+    category: podcasts
+
+  - name: Security Now
+    url: https://feeds.twit.tv/sn.xml
+    enabled: true
+    description: Security news and technical discussion.
+    category: podcasts
+
+  - name: The CyberWire Daily
+    url: https://feeds.megaphone.fm/CYB8331028129
+    enabled: true
+    description: Daily cybersecurity news podcast.
+    category: podcasts
+
+  - name: Smashing Security
+    url: https://feeds.fireside.fm/smashingsecurity/rss
+    enabled: true
+    description: Cybersecurity news and commentary.
+    category: podcasts

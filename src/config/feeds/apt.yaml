@@ -1,0 +1,22 @@
+category: apt
+
+feeds:
+
+  - name: Microsoft Threat Intelligence
+    url: https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/
+    enabled: true
+    description: Threat actor and nation-state activity.
+    category: apt
+
+  - name: Securelist APT Reports
+    url: https://securelist.com/category/apt-reports/feed/
+    enabled: true
+    description: APT-focused research from Kaspersky.
+    category: apt
+
+
+  - name: Recorded Future
+    url: https://www.recordedfuture.com/feed
+    enabled: true
+    description: Threat intelligence and adversary analysis.
+    category: apt

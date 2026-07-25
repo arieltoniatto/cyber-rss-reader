@@ -1,0 +1,45 @@
+category: structured_intelligence
+
+sources:
+
+  - name: CISA Known Exploited Vulnerabilities
+    url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    format: json
+    enabled: true
+    description: Catalog of vulnerabilities known to be exploited in the wild.
+
+  - name: ThreatFox
+    url: https://threatfox.abuse.ch/export/json/recent/
+    format: json
+    enabled: true
+    description: Recent malware-associated indicators of compromise.
+
+  - name: URLhaus
+    url: https://urlhaus.abuse.ch/downloads/json_recent/
+    format: json
+    enabled: true
+    description: Recently observed malware-distribution URLs.
+
+  - name: MalwareBazaar
+    url: https://mb-api.abuse.ch/api/v1/
+    format: api
+    enabled: false
+    description: Malware sample metadata API; requires POST requests and a dedicated client.
+
+  - name: Feodo Tracker
+    url: https://feodotracker.abuse.ch/downloads/ipblocklist.json
+    format: json
+    enabled: true
+    description: Botnet command-and-control IP blocklist.
+
+  - name: AlienVault OTX
+    url: https://otx.alienvault.com/api/v1/pulses/subscribed
+    format: api
+    enabled: false
+    description: OTX pulse API; requires authentication.
+
+  - name: OpenPhish Community Feed
+    url: https://openphish.com/feed.txt
+    format: text
+    enabled: true
+    description: Community phishing URL feed.

@@ -1,0 +1,45 @@
+category: vendors
+
+feeds:
+
+  - name: Fortinet FortiGuard Labs
+    url: https://www.fortinet.com/blog/threat-research/rss.xml
+    enabled: true
+    description: Fortinet threat research.
+    category: vendors
+
+  - name: Sophos News
+    url: https://news.sophos.com/en-us/feed/
+    enabled: true
+    description: Sophos threat research and security news.
+    category: vendors
+
+  - name: Trend Micro Research
+    url: https://www.trendmicro.com/en_us/research/rss.xml
+    enabled: true
+    description: Threat, malware, and vulnerability research.
+    category: vendors
+
+  - name: Proofpoint Threat Insight
+    url: https://www.proofpoint.com/us/blog/threat-insight/rss.xml
+    enabled: true
+    description: Email threats, malware, and actor research.
+    category: vendors
+
+  - name: Rapid7
+    url: https://www.rapid7.com/blog/rss/
+    enabled: true
+    description: Security research and vulnerability intelligence.
+    category: vendors
+
+  - name: Huntress
+    url: https://www.huntress.com/blog/rss.xml
+    enabled: true
+    description: SMB threats, incidents, and tradecraft.
+    category: vendors
+
+  - name: Arctic Wolf
+    url: https://arcticwolf.com/resources/blog/feed/
+    enabled: true
+    description: Threat research and security operations.
+    category: vendors
