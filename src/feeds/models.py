@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import feedparser
 
@@ -13,3 +13,4 @@ class FeedResult:
 
     feed: Feed
     parsed: feedparser.FeedParserDict
+    warnings: list[str] = field(default_factory=list)

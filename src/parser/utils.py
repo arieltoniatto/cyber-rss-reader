@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+import html
 from typing import Any
+from bs4 import BeautifulSoup
+
+
+def clean_html(text: str) -> str:
+    text = html.unescape(text)
+    return BeautifulSoup(text, "html.parser").get_text(" ", strip=True)
 
 
 def parse_datetime(value: str | None) -> datetime | None:
@@ -38,17 +45,14 @@ def extract_tags(entry: Any) -> list[str]:
 
 
 def first_available(entry: Any, *fields: str) -> str | None:
-    """
-    Return the first non-empty field from an RSS entry.
-    """
-
     for field in fields:
         value = getattr(entry, field, None)
 
         if value:
-            return str(value)
+            return clean_html(str(value))
 
     return None
+
 
 def parse_published(entry) -> datetime | None:
 

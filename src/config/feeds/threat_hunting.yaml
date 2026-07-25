@@ -9,7 +9,7 @@ feeds:
     category: threat_hunting
 
   - name: SpecterOps
-    url: https://posts.specterops.io/feed
+    url: https://specterops.io/feed
     enabled: true
     description: Adversary tradecraft and defensive research.
     category: threat_hunting

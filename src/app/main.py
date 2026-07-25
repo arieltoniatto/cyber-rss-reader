@@ -5,11 +5,14 @@ from app.container import ApplicationContainer
 from cli.app import create_cli
 from cli.dependencies import CLIServices
 from config.paths import ensure_runtime_directories
+from config.logging import configure_logging
 
 
 def main() -> None:
 
     ensure_runtime_directories()
+
+    configure_logging()
 
     container = ApplicationContainer.build()
 

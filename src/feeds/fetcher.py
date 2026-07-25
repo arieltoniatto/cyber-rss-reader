@@ -89,17 +89,24 @@ class RSSFetcher:
 
                 parsed = feedparser.parse(xml)
 
+                warnings: list[str] = []
+
                 if parsed.bozo:
-                    logger.warning(
-                        "Feed '%s' contains malformed XML.",
-                        feed.name,
+                    message = (
+                        f"Feed '{feed.name}' contains malformed XML.\n"
+                        f"Reason: {parsed.bozo_exception}"
                     )
+
+                    logger.warning(message)
+
+                    warnings.append(message)
 
                 logger.info("Downloaded %s", feed.name)
 
                 return FeedResult(
                     feed=feed,
                     parsed=parsed,
+                    warnings=warnings,
                 )
 
             except Exception as exc:
