@@ -8,8 +8,23 @@ from bs4 import BeautifulSoup
 
 
 def clean_html(text: str) -> str:
+    """
+    Decode HTML entities and remove HTML tags when present.
+    """
+
     text = html.unescape(text)
-    return BeautifulSoup(text, "html.parser").get_text(" ", strip=True)
+
+    # Only invoke BeautifulSoup if the text actually looks like HTML.
+    if "<" in text and ">" in text:
+        return BeautifulSoup(
+            text,
+            "html.parser",
+        ).get_text(
+            " ",
+            strip=True,
+        )
+
+    return text.strip()
 
 
 def parse_datetime(value: str | None) -> datetime | None:

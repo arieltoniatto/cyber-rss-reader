@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-
-from datetime import datetime, timezone
-from dateutil import parser as data_parser
+from datetime import datetime
 
 from feeds.fetcher import RSSFetcher
 from parser.models import Article
@@ -93,29 +91,6 @@ class ArticleService:
                 f"Available sources: {', '.join(available)}"
             )
 
-    def _publication_sort_key(self, article: Article) -> datetime:
-        published = article.published
-
-        if not published:
-            return datetime.min.replace(tzinfo=timezone.utc)
-
-        if isinstance(published, datetime):
-            if published.tzinfo is None:
-                return published.replace(tzinfo=timezone.utc)
-
-            return published
-
-        try:
-            parsed = data_parser.parse(str(published))
-
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-
-            return parsed
-
-        except (TypeError, ValueError, OverflowError):
-            return datetime.min.replace(tzinfo=timezone.utc)
-
     async def update(
         self,
         *,
@@ -180,17 +155,25 @@ class ArticleService:
         limit: int = 20,
         category: str | None = None,
     ) -> list[Article]:
-        articles = self._repository.load()
 
+        articles = self._repository.load()
 
         if category is not None:
             self._validate_category(category, articles)
 
+            category_lower = category.lower()
+
             articles = [
                 article
                 for article in articles
-                if article.category == category
+                if article.category
+                and article.category.lower() == category_lower
             ]
+
+        articles.sort(
+            key=lambda article: article.published or datetime.min,
+            reverse=True,
+        )
 
         return articles[:limit]
 
