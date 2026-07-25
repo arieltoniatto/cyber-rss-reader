@@ -23,7 +23,7 @@ def article_table(
     for article in articles:
 
         published = (
-            article.published.strftime("%Y-%m-%d")
+            article.published.strftime("%Y-%m-%d %H:%M")
             if article.published
             else "-"
         )

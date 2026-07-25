@@ -35,12 +35,7 @@ class RSSParser:
             category = feed.feed.category
 
             for entry in feed.parsed.entries:
-                print("=" * 80)
-                print("TITLE:", entry.get("title"))
-                print("published:", entry.get("published"))
-                print("published_parsed:", entry.get("published_parsed"))
-                print("updated:", entry.get("updated"))
-                print("updated_parsed:", entry.get("updated_parsed"))
+
                 article = Article(
                     title=first_available(
                         entry,

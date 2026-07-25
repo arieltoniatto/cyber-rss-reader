@@ -88,21 +88,33 @@ def parse_published(entry) -> datetime | None:
 
     return None
 
-def parse_tags(entry) -> list[str]:
+def parse_tags(entry: Any) -> list[str]:
     """
     Extract tags/categories from a feedparser entry.
 
-    Supports multiple RSS/Atom formats.
+    Supports FeedParserDict and regular dictionaries.
     """
 
     tags: list[str] = []
 
-    # feedparser usually exposes tags as a list of dict-like objects
-    for tag in entry.get("tags", []):
-        term = tag.get("term")
+    raw_tags = getattr(entry, "tags", None)
+
+    if raw_tags is None and hasattr(entry, "get"):
+        raw_tags = entry.get("tags", [])
+
+    for tag in raw_tags or []:
+        term = None
+
+        if hasattr(tag, "get"):
+            term = tag.get("term")
+
+        if term is None:
+            term = getattr(tag, "term", None)
 
         if term:
-            tags.append(term.strip())
+            cleaned = str(term).strip()
 
-    # Remove duplicates while preserving order
+            if cleaned:
+                tags.append(cleaned)
+
     return list(dict.fromkeys(tags))

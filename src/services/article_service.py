@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import logging
 
+from datetime import datetime, timezone
+from dateutil import parser as data_parser
+
 from feeds.fetcher import RSSFetcher
 from parser.models import Article
 from parser.parser import RSSParser
@@ -89,6 +92,29 @@ class ArticleService:
                 f"Unknown source: {source}.\n"
                 f"Available sources: {', '.join(available)}"
             )
+
+    def _publication_sort_key(self, article: Article) -> datetime:
+        published = article.published
+
+        if not published:
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+        if isinstance(published, datetime):
+            if published.tzinfo is None:
+                return published.replace(tzinfo=timezone.utc)
+
+            return published
+
+        try:
+            parsed = data_parser.parse(str(published))
+
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+
+            return parsed
+
+        except (TypeError, ValueError, OverflowError):
+            return datetime.min.replace(tzinfo=timezone.utc)
 
     async def update(
         self,
