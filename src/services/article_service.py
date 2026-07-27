@@ -9,6 +9,7 @@ from parser.parser import RSSParser
 from storage.interfaces import ArticleRepository
 from services.exceptions import InvalidCategoryError, InvalidSourceError
 from services.models import LatestQuery, UpdateResult
+from enrichment.pipeline import EnrichmentPipeline
 
 
 logger = logging.getLogger(__name__)
@@ -27,11 +28,13 @@ class ArticleService:
         repository: ArticleRepository,
         fetcher: RSSFetcher,
         parser: RSSParser,
+        enrichment_pipeline: EnrichmentPipeline,
     ) -> None:
 
         self._repository = repository
         self._fetcher = fetcher
         self._parser = parser
+        self._enrichment_pipeline = enrichment_pipeline
 
     def _available_categories(
             self,
@@ -97,16 +100,16 @@ class ArticleService:
         force_refresh: bool = False,
     ) -> UpdateResult:
         """
-        Refresh local cache.
+        Refresh the local article cache.
 
-        Returns the current article collection.
+        When the cache is valid and force_refresh is False, cached articles
+        are returned without downloading or enriching feeds.
         """
 
         if (
             not force_refresh
             and self._repository.is_cache_valid()
         ):
-
             logger.info("Using cached articles.")
 
             cached = self._repository.load()
@@ -134,19 +137,40 @@ class ArticleService:
             len(articles),
         )
 
-        if articles:
-            self._repository.refresh(articles)
-        else:
+        if not articles:
             logger.warning(
                 "No articles parsed. Cache not refreshed."
             )
+
+            return UpdateResult(
+                feeds_downloaded=len(feed_results),
+                articles_parsed=0,
+                articles_saved=0,
+                cache_used=False,
+            )
+
+        logger.info(
+            "Enriching %d articles.",
+            len(articles),
+        )
+
+        enriched_articles = await self._enrichment_pipeline.enrich_many(
+            articles
+        )
+
+        logger.info(
+            "Enriched %d articles.",
+            len(enriched_articles),
+        )
+
+        self._repository.refresh(enriched_articles)
 
         logger.info("Cache refreshed.")
 
         return UpdateResult(
             feeds_downloaded=len(feed_results),
             articles_parsed=len(articles),
-            articles_saved=len(articles),
+            articles_saved=len(enriched_articles),
             cache_used=False,
         )
 

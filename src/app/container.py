@@ -1,100 +1,56 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from config.paths import ARTICLE_CACHE_FILE, LOG_DIRECTORY, DATA_DIRECTORY, FEED_DIRECTORY
+from config.paths import (
+    ARTICLE_CACHE_FILE,
+    FEED_DIRECTORY,
+)
 from config.loader import ConfigLoader
 from config.models import FeedConfiguration
-
+from enrichment.pipeline import EnrichmentPipeline
+from enrichment.tag_enricher import TagEnricher
 from feeds.fetcher import RSSFetcher
-
 from parser.parser import RSSParser
-
 from search.engine import SearchEngine
-
 from services.article_service import ArticleService
 from services.search_service import SearchService
+from services.topic_service import TopicExtractionService
 from services.topic_service import TopicService
-
 from storage.interfaces import ArticleRepository
 from storage.json_storage import JsonArticleRepository
-
 from topics.algorithms.tfidf import TFIDFTopicExtractor
-from topics.extractor import TopicExtractionService
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-DEFAULT_FEEDS_DIR = FEED_DIRECTORY
-DEFAULT_CACHE_FILE = ARTICLE_CACHE_FILE
-DEFAULT_DATA_DIR = DATA_DIRECTORY
-DEFAULT_LOGS_DIR = LOG_DIRECTORY
 
 
-@dataclass(slots=True)
 class ApplicationContainer:
     """
-    Root Dependency Injection Container.
+    Application dependency-injection container.
 
-    This is the application's Composition Root.
-
-    Every concrete implementation is instantiated here exactly once.
+    Creates and wires all application dependencies during initialization.
     """
 
-    ####################################################################
-    # Infrastructure
-    ####################################################################
-
-    configuration: FeedConfiguration
-
-    repository: ArticleRepository
-
-    fetcher: RSSFetcher
-
-    parser: RSSParser
-
-    ####################################################################
-    # Domain
-    ####################################################################
-
-    search_engine: SearchEngine
-
-    topic_extractor: TopicExtractionService
-
-    ####################################################################
-    # Application Services
-    ####################################################################
-
-    article_service: ArticleService
-
-    search_service: SearchService
-
-    topic_service: TopicService
-
-    ####################################################################
-    # Factory
-    ####################################################################
-
-    @classmethod
-    def build(
-        cls,
+    def __init__(
+        self,
         *,
-        config_directory: Path | None = None,
-        cache_file: Path | None = None,
+        config_directory: Path = FEED_DIRECTORY,
+        cache_file: Path = ARTICLE_CACHE_FILE,
         cache_duration: timedelta = timedelta(hours=6),
         log_level: int = logging.WARNING,
-    ) -> "ApplicationContainer":
+    ) -> None:
 
-        config_directory = config_directory or DEFAULT_FEEDS_DIR
-        cache_file = cache_file or DEFAULT_CACHE_FILE
+        config_directory.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        # Ensure directories exist
-        config_directory.mkdir(parents=True, exist_ok=True)
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        cls._configure_logging(log_level)
+        self._configure_logging(log_level)
 
         logger = logging.getLogger(__name__)
 
@@ -104,7 +60,7 @@ class ApplicationContainer:
         # Configuration
         ################################################################
 
-        configuration = ConfigLoader(
+        self.configuration: FeedConfiguration = ConfigLoader(
             config_directory,
         ).load()
 
@@ -112,80 +68,73 @@ class ApplicationContainer:
         # Infrastructure
         ################################################################
 
-        repository = JsonArticleRepository(
-            cache_file=ARTICLE_CACHE_FILE,
+        self.repository: ArticleRepository = JsonArticleRepository(
+            cache_file=cache_file,
             cache_duration=cache_duration,
         )
 
-        fetcher = RSSFetcher(
-            configuration,
+        self.fetcher = RSSFetcher(
+            self.configuration,
         )
 
-        parser = RSSParser()
+        self.parser = RSSParser()
 
         ################################################################
-        # Domain
+        # Search
         ################################################################
 
-        search_engine = SearchEngine()
+        self.search_engine = SearchEngine()
 
-        topic_extractor = TopicExtractionService(
+        ################################################################
+        # Topic extraction
+        ################################################################
+
+        self.topic_extractor = TopicExtractionService(
             TFIDFTopicExtractor(),
         )
 
         ################################################################
-        # Application Services
+        # Enrichment
         ################################################################
 
-        article_service = ArticleService(
-            repository=repository,
-            fetcher=fetcher,
-            parser=parser,
+        self.tag_enricher = TagEnricher()
+
+        self.enrichment_pipeline = EnrichmentPipeline(
+            enrichers=[
+                self.tag_enricher,
+            ],
+            continue_on_error=True,
         )
 
-        search_service = SearchService(
-            repository=repository,
-            engine=search_engine,
+        ################################################################
+        # Services
+        ################################################################
+
+        self.article_service = ArticleService(
+            repository=self.repository,
+            fetcher=self.fetcher,
+            parser=self.parser,
+            enrichment_pipeline=self.enrichment_pipeline,
         )
 
-        topic_service = TopicService(
-            repository=repository,
-            extractor=topic_extractor,
+        self.search_service = SearchService(
+            repository=self.repository,
+            engine=self.search_engine,
+        )
+
+        self.topic_service = TopicService(
+            repository=self.repository,
+            extractor=self.topic_extractor,
         )
 
         logger.info("Application initialized.")
 
-        return cls(
-            configuration=configuration,
-
-            repository=repository,
-
-            fetcher=fetcher,
-
-            parser=parser,
-
-            search_engine=search_engine,
-
-            topic_extractor=topic_extractor,
-
-            article_service=article_service,
-
-            search_service=search_service,
-
-            topic_service=topic_service,
-        )
-
-    ####################################################################
-    # Private Helpers
-    ####################################################################
-
     @staticmethod
     def _configure_logging(
-        level: int,
+        log_level: int,
     ) -> None:
-
         logging.basicConfig(
-            level=level,
+            level=log_level,
             format=(
                 "%(asctime)s | "
                 "%(levelname)s | "

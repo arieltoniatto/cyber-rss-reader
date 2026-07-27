@@ -14,7 +14,7 @@ def main() -> None:
 
     configure_logging()
 
-    container = ApplicationContainer.build()
+    container = ApplicationContainer()
 
     services = CLIServices(
         article_service=container.article_service,

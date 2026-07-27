@@ -19,3 +19,5 @@ APPLICATION_LOG_FILE = LOG_DIRECTORY / "cyber-rss-reader.log"
 def ensure_runtime_directories() -> None:
     CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
     LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    FEED_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    DATA_DIRECTORY.mkdir(parents=True, exist_ok=True)
