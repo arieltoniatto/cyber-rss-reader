@@ -27,10 +27,7 @@ class RSSParser:
 
         for feed in feeds:
 
-            source = (
-                feed.parsed.feed.get("title")
-                or feed.feed.name
-            )
+            source = feed.feed.name
 
             category = feed.feed.category
 

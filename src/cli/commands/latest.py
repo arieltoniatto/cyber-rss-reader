@@ -24,6 +24,12 @@ def register(app, services):
             "-s",
             help="Filter by source.",
         ),
+        tag: str | None = typer.Option(
+            None,
+            "--tag",
+            "-t",
+            help="Filter articles by tag.",
+        ),
         limit: int = typer.Option(
             20,
             "--limit",
@@ -35,6 +41,7 @@ def register(app, services):
         query = LatestQuery(
             category=category,
             source=source,
+            tag=tag,
             limit=limit,
         )
         

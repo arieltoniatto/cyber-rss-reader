@@ -158,19 +158,46 @@ class ArticleService:
         articles = self._repository.load()
 
         if query.category:
-            self._validate_category(query.category, articles)
+            self._validate_category(
+                query.category,
+                articles,
+            )
+
+            requested_category = query.category.casefold()
+
             articles = [
                 article
                 for article in articles
-                if article.category.lower() == query.category.lower()
+                if article.category
+                and article.category.casefold() == requested_category
             ]
 
+
         if query.source:
-            self._validate_source(query.source, articles)
+            self._validate_source(
+                query.source,
+                articles,
+            )
+
+            requested_source = query.source.casefold()
+
             articles = [
                 article
                 for article in articles
-                if article.source.lower() == query.source.lower()
+                if article.source
+                and article.source.casefold() == requested_source
+            ]
+
+        if query.tag:
+            requested_tag = query.tag.casefold()
+
+            articles = [
+                article
+                for article in articles
+                if any(
+                    tag.casefold() == requested_tag
+                    for tag in article.tags
+                )
             ]
 
         articles.sort(
@@ -178,7 +205,7 @@ class ArticleService:
             reverse=True,
         )
 
-        return articles[: query.limit]
+        return articles[:query.limit]
 
     async def by_source(
         self,

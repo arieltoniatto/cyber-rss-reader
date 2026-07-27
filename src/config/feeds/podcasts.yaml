@@ -8,7 +8,7 @@ feeds:
     description: Cybersecurity news and analysis podcast.
     category: podcasts
 
-  - name: SANS Internet Storm Center Daily Podcast
+  - name: SANS Stormcast
     url: https://isc.sans.edu/dailypodcast.xml
     enabled: true
     description: Daily cybersecurity threat briefing.
