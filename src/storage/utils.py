@@ -79,6 +79,9 @@ def article_to_dict(
             ioc_to_dict(ioc)
             for ioc in article.iocs
         ],
+        "threat_actors": list(
+            article.threat_actors
+        ),
     }
 
 
@@ -104,6 +107,24 @@ def article_from_dict(data: dict) -> Article:
         if (ioc := ioc_from_dict(raw_ioc)) is not None
     ] if isinstance(raw_iocs, list) else []
 
+    raw_threat_actors = data.get(
+        "threat_actors",
+        [],
+    )
+
+    threat_actors = (
+        [
+            actor.strip()
+            for actor in raw_threat_actors
+            if (
+                isinstance(actor, str)
+                and actor.strip()
+            )
+        ]
+        if isinstance(raw_threat_actors, list)
+        else []
+    )
+
     return Article(
         title=str(data.get("title") or ""),
         source=str(data.get("source") or ""),
@@ -122,4 +143,5 @@ def article_from_dict(data: dict) -> Article:
         published=published,
         tags=tags,
         iocs=iocs,
+        threat_actors=threat_actors,
     )

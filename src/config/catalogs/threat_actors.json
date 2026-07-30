@@ -1,0 +1,37 @@
+[
+  {
+    "name": "APT29",
+    "aliases": [
+      "Cozy Bear",
+      "NOBELIUM"
+    ]
+  },
+  {
+    "name": "APT28",
+    "aliases": [
+      "Fancy Bear",
+      "Sofacy"
+    ]
+  },
+  {
+    "name": "Lazarus Group",
+    "aliases": [
+      "Lazarus"
+    ]
+  },
+  {
+    "name": "Scattered Spider",
+    "aliases": [
+      "UNC3944",
+      "Octo Tempest"
+    ]
+  },
+  {
+    "name": "Volt Typhoon",
+    "aliases": []
+  },
+  {
+    "name": "Sandworm",
+    "aliases": []
+  }
+]
