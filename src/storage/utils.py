@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime
 
-from parser.models import Article
+from parser.models import Article, IOC, IOCType
 
 
 def article_key(article: Article) -> str:
@@ -14,14 +14,72 @@ def article_key(article: Article) -> str:
     """
     return article.url.strip().lower()
 
+def ioc_to_dict(ioc: IOC) -> dict[str, str]:
+    """
+    Convert an IOC into a JSON-serializable dictionary.
+    """
+    return {
+        "type": ioc.type.value,
+        "value": ioc.value,
+    }
 
-def article_to_dict(article: Article) -> dict:
-    data = asdict(article)
 
-    if article.published is not None:
-        data["published"] = article.published.isoformat()
+def ioc_from_dict(data: object) -> IOC | None:
+    """
+    Convert cached IOC data back into an IOC object.
 
-    return data
+    Invalid IOC entries are ignored instead of preventing the entire
+    article cache from loading.
+    """
+    if not isinstance(data, dict):
+        return None
+
+    raw_type = data.get("type")
+    raw_value = data.get("value")
+
+    if not isinstance(raw_type, str):
+        return None
+
+    if not isinstance(raw_value, str):
+        return None
+
+    try:
+        ioc_type = IOCType(raw_type)
+    except ValueError:
+        return None
+
+    value = raw_value.strip()
+
+    if not value:
+        return None
+
+    return IOC(
+        type=ioc_type,
+        value=value,
+    )
+
+
+def article_to_dict(
+    article: Article,
+) -> dict[str, object]:
+    return {
+        "title": article.title,
+        "source": article.source,
+        "summary": article.summary,
+        "url": article.url,
+        "category": article.category,
+        "author": article.author,
+        "published": (
+            article.published.isoformat()
+            if article.published
+            else None
+        ),
+        "tags": list(article.tags),
+        "iocs": [
+            ioc_to_dict(ioc)
+            for ioc in article.iocs
+        ],
+    }
 
 
 def article_from_dict(data: dict) -> Article:
@@ -30,13 +88,38 @@ def article_from_dict(data: dict) -> Article:
     if published:
         published = datetime.fromisoformat(published)
 
+    raw_tags = data.get("tags", [])
+
+    tags = [
+        tag
+        for tag in raw_tags
+        if isinstance(tag, str)
+    ] if isinstance(raw_tags, list) else []
+
+    raw_iocs = data.get("iocs", [])
+
+    iocs = [
+        ioc
+        for raw_ioc in raw_iocs
+        if (ioc := ioc_from_dict(raw_ioc)) is not None
+    ] if isinstance(raw_iocs, list) else []
+
     return Article(
-        title=data["title"],
-        source=data["source"],
-        category=data["category"],
-        author=data.get("author"),
+        title=str(data.get("title") or ""),
+        source=str(data.get("source") or ""),
+        summary=str(data.get("summary") or ""),
+        url=str(data.get("url") or ""),
+        category=(
+            str(data["category"])
+            if data.get("category") is not None
+            else None
+        ),
+        author=(
+            str(data["author"])
+            if data.get("author") is not None
+            else None
+        ),
         published=published,
-        summary=data.get("summary"),
-        url=data["url"],
-        tags=data.get("tags", []),
+        tags=tags,
+        iocs=iocs,
     )

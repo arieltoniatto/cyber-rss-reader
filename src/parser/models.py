@@ -2,6 +2,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
+
+
+class IOCType(StrEnum):
+    IPV4 = "ipv4"
+    IPV6 = "ipv6"
+    DOMAIN = "domain"
+    URL = "url"
+    EMAIL = "email"
+    MD5 = "md5"
+    SHA1 = "sha1"
+    SHA256 = "sha256"
+    CVE = "cve"
+    ASN = "asn"
+
+
+@dataclass(slots=True, frozen=True)
+class IOC:
+    """
+    Observable or indicator extracted from an article.
+    """
+
+    type: IOCType
+    value: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -21,3 +45,4 @@ class Article:
     published: datetime | None = None
 
     tags: list[str] = field(default_factory=list)
+    iocs: list[IOC] = field(default_factory=list)

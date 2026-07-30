@@ -12,6 +12,7 @@ from config.loader import ConfigLoader
 from config.models import FeedConfiguration
 from enrichment.pipeline import EnrichmentPipeline
 from enrichment.tag_enricher import TagEnricher
+from enrichment.ioc_enricher import IOCEnricher
 from feeds.fetcher import RSSFetcher
 from parser.parser import RSSParser
 from search.engine import SearchEngine
@@ -98,10 +99,12 @@ class ApplicationContainer:
         ################################################################
 
         self.tag_enricher = TagEnricher()
+        self.ioc_enricher = IOCEnricher()
 
         self.enrichment_pipeline = EnrichmentPipeline(
             enrichers=[
                 self.tag_enricher,
+                self.ioc_enricher,
             ],
             continue_on_error=True,
         )
