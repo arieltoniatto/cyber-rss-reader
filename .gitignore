@@ -1,8 +1,65 @@
-.venv
-.vscode
-*.pyc
-/__pycache__/
-/cyber_rss_reader.egg-info/
+# =============================================================================
+# Python
+# =============================================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Package and build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+
+# =============================================================================
+# Testing, coverage and static analysis
+# =============================================================================
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.hypothesis/
+
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+
+# =============================================================================
+# IDEs and editors
+# =============================================================================
+
+.vscode/
+.idea/
+
+*.swp
+*.swo
+*~
+
+
+# =============================================================================
+# Environment variables and local secrets
+# =============================================================================
+
+.env
+.env.*
+!.env.example
+
+
+# =============================================================================
+# Runtime-generated application data
+# =============================================================================
 
 cache/*
 !cache/.gitkeep
@@ -10,4 +67,15 @@ cache/*
 logs/*
 !logs/.gitkeep
 
+# Raw MITRE ATT&CK STIX bundles.
+# The normalized catalog under src/config/catalogs remains versioned.
 data/mitre-attack/*.json
+
+
+# =============================================================================
+# Operating system files
+# =============================================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini

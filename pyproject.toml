@@ -1,24 +1,66 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
+
 
 [project]
 name = "cyber-rss-reader"
 version = "0.1.0"
-description = "Cybersecurity RSS Reader"
+description = "Terminal-based cybersecurity RSS and threat intelligence reader"
+readme = "README.md"
 requires-python = ">=3.12"
+
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "feedparser",
+    "httpx",
+    "pydantic>=2,<3",
+    "python-dateutil",
+    "PyYAML",
+    "rapidfuzz",
+    "rich",
+    "scikit-learn",
+    "typer",
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pytest",
+    "pytest-asyncio",
+]
+
 
 [project.scripts]
 rss = "app.main:main"
+rss-update-actors = "tools.update_threat_actor_catalog:main"
+
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
+
+[tool.setuptools.package-data]
+config = [
+    "feeds/*.yaml",
+    "feeds/*.yml",
+    "catalogs/*.json",
+]
+
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--import-mode=importlib",
+]
+asyncio_mode = "strict"
 markers = [
     "integration: tests that access external services over the network",
 ]
