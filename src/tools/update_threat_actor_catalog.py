@@ -11,9 +11,13 @@ import httpx
 from config.paths import (
     MITRE_ATTACK_DIRECTORY,
     THREAT_ACTOR_CATALOG_FILE,
+    THREAT_ACTOR_OVERRIDES_FILE,
 )
 from cti.attack_stix_catalog import (
     build_threat_actor_catalog,
+)
+from cti.threat_actor_overrides import (
+    apply_threat_actor_overrides,
 )
 
 
@@ -56,7 +60,24 @@ def main() -> None:
         help="Generated threat actor catalog.",
     )
 
+    parser.add_argument(
+        "--overrides",
+        type=Path,
+        default=THREAT_ACTOR_OVERRIDES_FILE,
+        help="Local threat actor alias override file.",
+    )
+
     args = parser.parse_args()
+
+    
+    output_path = args.output.resolve()
+    overrides_path = args.overrides.resolve()
+
+    if output_path == overrides_path:
+        raise ValueError(
+            "--output and --overrides cannot reference "
+            "the same file."
+        )
 
     with httpx.Client(
         timeout=120.0,
@@ -112,8 +133,18 @@ def main() -> None:
         source_url=source_url,
     )
 
+    overrides = _load_json_file(
+        overrides_path
+    )
+
+    catalog = apply_threat_actor_overrides(
+        catalog,
+        overrides,
+        source_name=str(overrides_path),
+    )
+
     _write_json(
-        args.output,
+        output_path,
         catalog,
     )
 
@@ -122,6 +153,18 @@ def main() -> None:
     print(
         f"Generated {args.output} with "
         f"{metadata['actor_count']} actors."
+    )
+
+    override_metadata = metadata.get(
+        "local_overrides",
+        {},
+    )
+
+    print(
+        "Applied local overrides: "
+        f"{override_metadata.get('actors_configured', 0)} actors, "
+        f"{override_metadata.get('aliases_added', 0)} aliases added, "
+        f"{override_metadata.get('aliases_removed', 0)} aliases removed."
     )
 
     print(
@@ -305,6 +348,27 @@ def _write_json(
 
     temporary_file.replace(path)
 
+def _load_json_file(
+    path: Path,
+) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(
+            "Threat actor override file "
+            f"not found: {path}"
+        )
+
+    with path.open(
+        encoding="utf-8",
+    ) as fp:
+        payload = json.load(fp)
+
+    if not isinstance(payload, dict):
+        raise ValueError(
+            "Threat actor override file "
+            "must contain a JSON object."
+        )
+
+    return payload
 
 if __name__ == "__main__":
     main()

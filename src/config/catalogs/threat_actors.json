@@ -5,13 +5,20 @@
     "stix_version": "2.1",
     "attack_version": "19.1",
     "source_url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack-19.1.json",
-    "generated_at": "2026-08-01T15:39:48.386811+00:00",
+    "generated_at": "2026-08-01T16:28:08.543292+00:00",
     "actor_count": 174,
     "relationship_scope": {
       "techniques": "Direct group-to-technique relationships",
       "software": "Direct group-to-software relationships",
       "software_techniques": "Techniques used by software associated with the group",
       "campaigns": "Campaigns attributed to the group"
+    },
+    "local_overrides": {
+      "schema_version": 1,
+      "source": "/home/lasgota/code/cyber-rss-reader/src/config/catalogs/threat_actor_overrides.json",
+      "actors_configured": 0,
+      "aliases_added": 0,
+      "aliases_removed": 0
     }
   },
   "actors": [

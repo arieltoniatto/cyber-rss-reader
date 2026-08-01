@@ -43,6 +43,11 @@ THREAT_ACTOR_CATALOG_FILE = (
     / "threat_actors.json"
 )
 
+THREAT_ACTOR_OVERRIDES_FILE = (
+    CATALOG_DIRECTORY
+    / "threat_actor_overrides.json"
+)
+
 
 def ensure_runtime_directories() -> None:
     CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)

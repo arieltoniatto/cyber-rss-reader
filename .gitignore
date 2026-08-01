@@ -9,3 +9,5 @@ cache/*
 
 logs/*
 !logs/.gitkeep
+
+data/mitre-attack/*.json
