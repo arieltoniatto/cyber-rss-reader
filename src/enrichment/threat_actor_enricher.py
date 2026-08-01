@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 from re import Pattern
@@ -11,6 +12,8 @@ from parser.models import Article
 
 
 _HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
@@ -186,19 +189,32 @@ class ThreatActorEnricher:
                 f"{catalog_file}"
             ) from exc
 
-        if not isinstance(payload, list):
+        if isinstance(payload, list):
+            entries = payload
+
+        elif isinstance(payload, dict):
+            entries = payload.get("actors")
+
+            if not isinstance(entries, list):
+                raise ValueError(
+                    "Threat actor catalog must contain "
+                    "an actors list."
+                )
+
+        else:
             raise ValueError(
                 "Threat actor catalog must contain "
-                "a JSON list."
+                "a JSON object or list."
             )
 
-        compiled_aliases: list[
-            _CompiledAlias
-        ] = []
+        alias_text_by_key: dict[str, str] = {}
 
-        alias_owners: dict[str, str] = {}
+        alias_owners: dict[
+            str,
+            set[str],
+        ] = {}
 
-        for index, entry in enumerate(payload):
+        for index, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise ValueError(
                     "Threat actor catalog entry "
@@ -233,17 +249,12 @@ class ThreatActorEnricher:
                     "must be a list."
                 )
 
-            aliases = [
+            for raw_alias in [
                 canonical_name,
                 *raw_aliases,
-            ]
-
-            for raw_alias in aliases:
+            ]:
                 if not isinstance(raw_alias, str):
-                    raise ValueError(
-                        f"Alias for {canonical_name!r} "
-                        "must be a string."
-                    )
+                    continue
 
                 alias = cls._normalize_name(
                     raw_alias
@@ -254,38 +265,52 @@ class ThreatActorEnricher:
 
                 alias_key = alias.casefold()
 
-                existing_owner = alias_owners.get(
-                    alias_key
+                alias_text_by_key.setdefault(
+                    alias_key,
+                    alias,
                 )
 
-                if (
-                    existing_owner is not None
-                    and existing_owner.casefold()
-                    != canonical_name.casefold()
-                ):
-                    raise ValueError(
-                        f"Alias {alias!r} is assigned "
-                        "to multiple threat actors: "
-                        f"{existing_owner!r} and "
-                        f"{canonical_name!r}."
-                    )
+                alias_owners.setdefault(
+                    alias_key,
+                    set(),
+                ).add(canonical_name)
 
-                if existing_owner is not None:
-                    continue
+        compiled_aliases: list[
+            _CompiledAlias
+        ] = []
 
-                alias_owners[alias_key] = (
-                    canonical_name
+        for alias_key, owners in alias_owners.items():
+            alias = alias_text_by_key[alias_key]
+
+            if len(owners) != 1:
+                logger.warning(
+                    "Ignoring ambiguous threat actor "
+                    "alias %r assigned to: %s",
+                    alias,
+                    ", ".join(sorted(owners)),
                 )
 
-                compiled_aliases.append(
-                    _CompiledAlias(
-                        canonical_name=canonical_name,
-                        alias=alias,
-                        pattern=cls._compile_alias(
-                            alias
-                        ),
-                    )
+                continue
+
+            canonical_name = next(iter(owners))
+
+            compiled_aliases.append(
+                _CompiledAlias(
+                    canonical_name=canonical_name,
+                    alias=alias,
+                    pattern=cls._compile_alias(
+                        alias
+                    ),
                 )
+            )
+
+        # Prefer longer aliases during detection.
+        compiled_aliases.sort(
+            key=lambda item: (
+                -len(item.alias),
+                item.alias.casefold(),
+            )
+        )
 
         return tuple(compiled_aliases)
 
