@@ -1,675 +1,651 @@
-
 # Cybersecurity RSS Reader
 
-A modular, terminal-based cybersecurity RSS feed reader built with Python 3.12+.
+A modular, terminal-based cybersecurity RSS and threat intelligence reader built with Python 3.12+.
 
-The project is designed with clean architecture principles, separation of concerns, and future scalability in mind. It supports multiple RSS feeds, categories, local caching, searching, topic extraction, and can be extended with databases, APIs, web interfaces, and plugins.
+The application collects RSS/Atom feeds, normalizes articles, enriches them with cybersecurity metadata, stores them in a local JSON cache, and exposes search, filtering, and topic extraction through a Typer and Rich CLI.
 
----
+## Status
 
-# Features
+* Version: `0.1.0`
+* Python: `>=3.12`
+* Interface: terminal CLI
+* Storage backend: local JSON
+* Current topic extractor: TF-IDF
+* Feed configuration: YAML
+* Threat actor catalog: MITRE ATT&CK Enterprise
 
-## Current Features
+## Features
 
-- Terminal-based interface
-- RSS/Atom feed collection
-- Multiple feed categories
-- YAML-based configuration
-- Concurrent feed downloads
-- HTTP retries and timeouts
-- Configurable User-Agent
-- Article normalization
-- Local JSON cache
-- Cache expiration
-- Duplicate article handling
-- Search engine
-- Keyword filtering
-- Category filtering
-- Source filtering
-- Fuzzy matching
-- Topic extraction
-- Rich terminal output
+### Feed collection
 
----
+* RSS and Atom parsing
+* Concurrent feed downloads
+* Configurable HTTP timeouts, retries, and User-Agent
+* YAML-based feed configuration
+* Automatic category discovery
+* Feed enable/disable support
+* Duplicate feed name and URL validation
 
-## Planned Features
+The repository currently ships with 53 enabled feeds across 13 categories:
 
-- SQLite/PostgreSQL storage backend
-- REST API
-- Web interface
-- Plugin system
-- AI-generated summaries
-- CVE lookup
-- IOC extraction
-- MITRE ATT&CK mapping
-- Elasticsearch integration
-- Docker deployment
+* `apt`
+* `detection`
+* `dfir`
+* `exploit`
+* `government`
+* `malware`
+* `news`
+* `osint`
+* `podcasts`
+* `threat_hunting`
+* `threat_intelligence`
+* `vendors`
+* `vulnerability`
 
----
+### Article processing
 
-# Architecture
+* Unified article model
+* HTML cleanup and article normalization
+* Publication date parsing
+* Duplicate article handling
+* Local cache with expiration
+* Forced refresh support
 
-The project follows a modular architecture based on separation of responsibilities.
+Each normalized article can contain:
 
-High-level data flow:
+* title
+* source
+* summary
+* URL
+* category
+* author
+* publication date
+* tags
+* indicators of compromise
+* detected threat actors
 
+### Enrichment pipeline
 
+Articles pass through an asynchronous enrichment pipeline in this order:
+
+1. `TagEnricher`
+2. `IOCEnricher`
+3. `ThreatActorEnricher`
+
+The pipeline returns new immutable article instances and can continue processing when an individual enricher fails.
+
+#### Tag enrichment
+
+The tag enricher:
+
+* normalizes tags supplied by feeds
+* removes duplicate tags
+* extracts common cybersecurity keywords
+* extracts CVE identifiers as tags
+
+#### IOC extraction
+
+The IOC enricher currently supports:
+
+* IPv4 addresses
+* IPv6 addresses
+* domains
+* URLs
+* email addresses
+* MD5 hashes
+* SHA-1 hashes
+* SHA-256 hashes
+* CVE identifiers
+* autonomous system numbers
+
+#### Threat actor detection
+
+Threat actors are detected using a normalized local catalog generated from MITRE ATT&CK Enterprise STIX 2.1 data.
+
+The catalog supports:
+
+* MITRE group names
+* known aliases
+* local alias overrides
+* ambiguous-alias detection
+* catalog regeneration from a specific or latest stable ATT&CK release
+
+Ambiguous aliases assigned to more than one actor are intentionally skipped.
+
+### Search and analysis
+
+* keyword search
+* category filtering
+* source filtering
+* tag filtering for latest articles
+* fuzzy matching
+* latest-article listing
+* source and category views
+* TF-IDF topic extraction
+* Rich terminal tables
+
+## Architecture
+
+The project uses explicit dependency injection and separates CLI, application services, domain models, infrastructure, and enrichment components.
+
+```mermaid
+flowchart TD
+    CLI[Typer and Rich CLI]
+
+    CLI --> ArticleService
+    CLI --> SearchService
+    CLI --> TopicService
+
+    FeedConfig[YAML feed configuration] --> ConfigLoader
+    ConfigLoader --> RSSFetcher
+
+    ArticleService --> RSSFetcher
+    ArticleService --> RSSParser
+    ArticleService --> EnrichmentPipeline
+    ArticleService --> Repository[JsonArticleRepository]
+
+    EnrichmentPipeline --> TagEnricher
+    EnrichmentPipeline --> IOCEnricher
+    EnrichmentPipeline --> ThreatActorEnricher
+
+    ThreatActorCatalog[MITRE ATT&CK actor catalog] --> ThreatActorEnricher
+
+    SearchService --> Repository
+    SearchService --> SearchEngine
+
+    TopicService --> Repository
+    TopicService --> TFIDF[TF-IDF extractor]
 ```
-            +----------------+
-            | YAML Feeds     |
-            | Configuration  |
-            +-------+--------+
-                    |
-                    v
-            +---------------+
-            | Config Loader |
-            +-------+-------+
-                    |
-                    v
-            +---------------+
-            | RSS Fetcher   |
-            +-------+-------+
-                    |
-                    v
-            +---------------+
-            | RSS Parser    |
-            +-------+-------+
-                    |
-                    v
-            +---------------+
-            | Article Model |
-            +-------+-------+
-                    |
-      +-------------+-------------+
-      |                           |
-      v                           v
 
-+----------------+          +----------------+
-| Storage Layer  |          | Search Engine  |
-| JSON / SQLite  |          | Filters/Fuzzy  |
-+----------------+          +----------------+
+`ApplicationContainer` creates and wires the concrete implementations. The CLI receives only the application services it requires and does not access the repository, parser, or fetcher directly.
 
-                    |
-                    v
+## Project structure
 
-            +---------------+
-            | Terminal CLI |
-            | Typer + Rich |
-            +---------------+
-```
-
-
-
----
-
-# Project Structure
-
-```
-
+```text
 cyber-rss-reader/
-
 ├── src/
-│
-│   ├── app/
-│   │   ├── container.py
-│   │   └── main.py
-│   │
-│   ├── cli/
-│   │   ├── app.py
-│   │   ├── dependencies.py
-│   │   └── commands/
-│   │
+│   ├── app/                    # Bootstrap and dependency injection
+│   ├── cli/                    # Typer commands and Rich formatting
 │   ├── config/
+│   │   ├── feeds/              # RSS/Atom category files
+│   │   ├── catalogs/           # Generated actor catalog and local overrides
 │   │   ├── loader.py
 │   │   ├── models.py
-│   │   └── feeds/
-│   │       ├── news.yaml
-│   │       ├── malware_research.yaml
-│   │       └── exploit_research.yaml
-│   │
-│   ├── feeds/
-│   │   ├── fetcher.py
-│   │   └── models.py
-│   │
-│   ├── parser/
-│   │   ├── parser.py
-│   │   ├── models.py
-│   │   └── utils.py
-│   │
-│   ├── search/
-│   │   ├── engine.py
-│   │   ├── filters.py
-│   │   └── models.py
-│   │
-│   ├── storage/
-│   │   ├── interfaces.py
-│   │   ├── json_storage.py
-│   │   └── models.py
-│   │
-│   ├── topics/
-│   │   ├── extractor.py
-│   │   └── models.py
-│   │
-│   └── services/
-│       ├── article_service.py
-│       ├── search_service.py
-│       └── topic_service.py
-│
-├── data/
-│   └── articles.json
-│
+│   │   └── paths.py
+│   ├── cti/                    # ATT&CK catalog and override processing
+│   ├── enrichment/             # Tag, IOC, and threat actor enrichers
+│   ├── feeds/                  # HTTP client and concurrent feed fetching
+│   ├── parser/                 # RSS parsing and normalized article models
+│   ├── search/                 # Search engine, query parsing, and filters
+│   ├── services/               # Application services
+│   ├── storage/                # Repository interface and JSON backend
+│   ├── tools/                  # Catalog maintenance CLI
+│   └── topics/                 # Topic extraction abstractions and algorithms
 ├── tests/
-│
-├── requirements.txt
-├── pyproject.toml
+│   ├── cti/
+│   ├── enrichment/
+│   ├── integration/
+│   └── unit/
+├── cache/                      # Generated article cache
+├── data/                       # Downloaded source data, including ATT&CK STIX
+├── logs/                       # Runtime logs
+├── pyproject.toml              # Package metadata and dependency source of truth
+├── requirements.txt            # Development bootstrap
 └── README.md
+```
 
-````
+## Installation
 
----
+### Requirements
 
-# Installation
+* Python 3.12 or newer
+* `pip`
+* Git
+* internet access for feed updates and ATT&CK catalog downloads
 
-## Requirements
-
-- Python >= 3.12
-- pip
-- virtual environment
-
----
-
-## Clone repository
+### Clone the repository
 
 ```bash
-git clone <repository-url>
-
+git clone git@github.com:arieltoniatto/cyber-rss-reader.git
 cd cyber-rss-reader
-````
+```
 
----
+### Create a virtual environment
 
-## Create virtual environment
-
-Linux:
+Linux or macOS:
 
 ```bash
-python3 -m venv .venv
-
+python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
-Windows:
+Windows PowerShell:
 
 ```powershell
-python -m venv .venv
-
-.venv\Scripts\activate
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
----
-
-## Install dependencies
+Upgrade the packaging tools:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install --upgrade pip
 ```
 
----
+### Development installation
 
-## Install as CLI application
-
-Install in editable mode:
+`requirements.txt` installs the project in editable mode with the `dev` dependency group:
 
 ```bash
-pip install -e .
+python -m pip install -r requirements.txt
 ```
 
-After installation:
+This is equivalent to:
+
+```bash
+python -m pip install -e '.[dev]'
+```
+
+### Runtime-only editable installation
+
+```bash
+python -m pip install -e .
+```
+
+### Validate the installation
 
 ```bash
 rss --help
+rss-update-actors --help
+python -m pip check
 ```
 
----
+The installation creates two console commands:
 
-# Usage
+| Command             | Purpose                                            |
+| ------------------- | -------------------------------------------------- |
+| `rss`               | Main RSS reader CLI                                |
+| `rss-update-actors` | Download ATT&CK STIX and rebuild the actor catalog |
 
-## Update feeds
+## Usage
 
-Downloads feeds and updates the local cache.
+### Update feeds
+
+Use the cache when it is still valid:
 
 ```bash
 rss update
 ```
 
-Example:
+Ignore the cache and download every configured feed again:
 
-```
-Updating feeds...
-
-Feeds downloaded : 11
-Articles parsed  : 265
-Articles saved   : 265
-Source           : Network
-
-Update complete.
+```bash
+rss update --refresh
 ```
 
----
+Short form:
 
-## Show latest articles
+```bash
+rss update -r
+```
+
+The default cache duration is six hours.
+
+### Show latest articles
 
 ```bash
 rss latest
 ```
 
-Example:
-
-```
-Published   Source          Category
-2026-06-01  CyberScoop      news
-2026-05-30  BleepingComp.   malware_research
-
-Title:
-Hackers Used Meta's AI Support Bot to Seize Instagram Accounts
-```
-
----
-
-## Search articles
-
-Search by keyword:
+Limit the number of results:
 
 ```bash
-rss search malware
+rss latest --limit 10
 ```
 
-Search by category:
+Filter by category:
 
 ```bash
-rss search exploit --category exploit_research
+rss latest --category threat_intelligence
 ```
 
-Search by source:
+Filter by source:
 
 ```bash
-rss search vulnerability --source "BleepingComputer"
+rss latest --source "Cisco Talos"
 ```
 
----
+Filter by tag:
 
-## Show topics
+```bash
+rss latest --tag ransomware
+```
 
-Extract cybersecurity topics:
+Combine filters:
+
+```bash
+rss latest \
+  --category news \
+  --tag vulnerability \
+  --limit 10
+```
+
+Available options:
+
+| Option       | Short form | Description                         |
+| ------------ | ---------- | ----------------------------------- |
+| `--category` | `-c`       | Filter by category                  |
+| `--source`   | `-s`       | Filter by source                    |
+| `--tag`      | `-t`       | Filter by tag                       |
+| `--limit`    | `-n`       | Maximum result count; default is 20 |
+
+### Search articles
+
+Search for a keyword:
+
+```bash
+rss search ransomware
+```
+
+Filter the search:
+
+```bash
+rss search vulnerability \
+  --category government \
+  --source "CISA News"
+```
+
+The CLI currently accepts `--limit`, but the search command does not yet apply it to the returned results. This is a known implementation limitation.
+
+### Extract topics
+
+Show the most relevant topics from cached articles:
 
 ```bash
 rss topics
 ```
 
-Example:
-
-```
-Topic                    Score
-
-ransomware               0.82
-zero day exploit         0.76
-malware campaign         0.71
-```
-
----
-
-## Filter categories
+Set the result limit:
 
 ```bash
-rss category news
+rss topics --limit 10
 ```
 
----
+The current application container uses the TF-IDF topic extractor.
 
-## Filter sources
+### Filter by source
 
 ```bash
-rss source CyberScoop
+rss source "BleepingComputer"
 ```
 
----
-
-# Feed Configuration
-
-Feeds are stored as YAML files.
-
-Each category has its own file.
-
-Example:
-
+```bash
+rss source "Microsoft Security Blog" --limit 10
 ```
+
+### Filter by category
+
+```bash
+rss category threat_intelligence
+```
+
+```bash
+rss category malware --limit 10
+```
+
+## Feed configuration
+
+Feed definitions are stored in:
+
+```text
 src/config/feeds/
-├── news.yaml
-├── malware_research.yaml
-└── exploit_research.yaml
 ```
 
----
-
-## Add a new feed
-
-Edit the desired category file.
+Each YAML file defines one category.
 
 Example:
-
-`news.yaml`
 
 ```yaml
 category: news
 
 feeds:
-
   - name: Example Security News
-    url: https://example.com/rss.xml
+    url: https://example.com/feed.xml
     enabled: true
-    description: Security news source
+    description: Security news and threat reporting.
 ```
 
-The application automatically loads new feeds.
+The category is assigned from the top-level `category` field, so a per-feed category field is not required.
 
-No code changes are required.
+### Add a feed
 
----
-
-# Disable a feed
-
-Change:
+Add an item to an existing category file:
 
 ```yaml
-enabled: true
+- name: Example Feed
+  url: https://example.com/rss.xml
+  enabled: true
+  description: Example cybersecurity feed.
 ```
 
-to:
+No Python code changes are required.
+
+### Disable a feed
 
 ```yaml
-enabled: false
+- name: Example Feed
+  url: https://example.com/rss.xml
+  enabled: false
 ```
 
-Example:
+Disabled feeds are excluded when the configuration is loaded.
 
-```yaml
-feeds:
+### Add a category
 
-  - name: Old Feed
-    url: https://example.com/rss.xml
-    enabled: false
-```
+Create a new YAML file under `src/config/feeds/`:
 
-Disabled feeds are ignored automatically.
-
----
-
-# Add a New Category
-
-Create a new YAML file.
-
-Example:
-
-```
+```text
 src/config/feeds/cloud_security.yaml
 ```
-
-Content:
 
 ```yaml
 category: cloud_security
 
 feeds:
-
-  - name: Cloud Security News
-    url: https://example.com/feed.xml
+  - name: Example Cloud Security Feed
+    url: https://example.com/cloud-security.xml
     enabled: true
 ```
 
-Restart the application.
+The loader automatically discovers `*.yaml` files.
 
-The new category is automatically detected.
+### Configuration validation
 
----
+The configuration layer rejects:
 
-# Storage Layer
+* invalid YAML
+* fields not defined by the Pydantic models
+* duplicate feed names
+* duplicate feed URLs
+* missing feed configuration directories
 
-Currently:
+## Threat actor catalog
 
+The normalized catalog is stored at:
+
+```text
+src/config/catalogs/threat_actors.json
 ```
-ArticleRepository
-        |
-        v
-JsonArticleRepository
+
+Local overrides are stored at:
+
+```text
+src/config/catalogs/threat_actor_overrides.json
 ```
+
+Downloaded ATT&CK STIX bundles are stored under:
+
+```text
+data/mitre-attack/
+```
+
+Raw STIX files are runtime artifacts and are ignored by Git. The normalized catalog is packaged with the application so threat actor detection can operate locally.
+
+### Update to the latest stable ATT&CK version
+
+```bash
+rss-update-actors
+```
+
+### Generate from a specific ATT&CK version
+
+```bash
+rss-update-actors --version 19.1
+```
+
+### Select custom output and override paths
+
+```bash
+rss-update-actors \
+  --output src/config/catalogs/threat_actors.json \
+  --overrides src/config/catalogs/threat_actor_overrides.json
+```
+
+The tool downloads Enterprise ATT&CK STIX 2.1 data and rebuilds the normalized actor catalog.
+
+## Storage and runtime data
+
+### Article cache
 
 Articles are stored in:
 
-```
-data/articles.json
+```text
+cache/articles.json
 ```
 
-Example:
+The JSON document contains:
 
 ```json
 {
-  "created_at": "2026-07-22",
-  "articles": []
+  "created_at": "2026-08-01T00:00:00+00:00",
+  "articles": [
+    {
+      "title": "Example article",
+      "source": "Example source",
+      "summary": "Example summary",
+      "url": "https://example.com/article",
+      "category": "news",
+      "author": null,
+      "published": null,
+      "tags": [],
+      "iocs": [],
+      "threat_actors": []
+    }
+  ]
 }
 ```
 
----
+The repository deduplicates articles before writing the cache.
 
-# Replacing JSON with SQLite
+### Runtime directories
 
-The storage layer uses an interface:
+| Path                                              | Purpose                        | Versioned             |
+| ------------------------------------------------- | ------------------------------ | --------------------- |
+| `cache/articles.json`                             | Article cache                  | No                    |
+| `logs/`                                           | Runtime logs                   | No, except `.gitkeep` |
+| `data/mitre-attack/`                              | Downloaded ATT&CK STIX bundles | No                    |
+| `src/config/catalogs/threat_actors.json`          | Normalized actor catalog       | Yes                   |
+| `src/config/catalogs/threat_actor_overrides.json` | Local override configuration   | Yes                   |
 
-```
-storage/interfaces.py
-```
+## Development
 
-Current:
+### Run tests without network access
 
-```
-ArticleRepository
-        |
-        v
-JsonArticleRepository
-```
-
-Future:
-
-```
-ArticleRepository
-        |
-        v
-SQLiteArticleRepository
+```bash
+pytest -m "not integration"
 ```
 
-Implementation steps:
+### Run integration tests
 
-1. Create:
+Integration tests access external feed URLs:
 
-```
-storage/sqlite_storage.py
-```
-
-2. Implement:
-
-```python
-class SQLiteArticleRepository(
-    ArticleRepository
-):
-    ...
+```bash
+pytest -m integration
 ```
 
-3. Replace dependency injection:
-
-Current:
-
-```python
-JsonArticleRepository(...)
-```
-
-Future:
-
-```python
-SQLiteArticleRepository(...)
-```
-
-No service changes are required.
-
----
-
-# Creating Plugins
-
-Plugins can extend functionality without modifying core modules.
-
-Example:
-
-```
-plugins/
-
-    my_plugin/
-
-        __init__.py
-        plugin.py
-```
-
-Plugin interface:
-
-```python
-class Plugin:
-
-    def initialize(self):
-        pass
-
-    def execute(self):
-        pass
-```
-
-Possible plugins:
-
-* custom exporters
-* alert systems
-* integrations
-* additional enrichment modules
-
----
-
-# Dependencies
-
-Main dependencies:
-
-| Package    | Purpose            |
-| ---------- | ------------------ |
-| httpx      | HTTP client        |
-| feedparser | RSS parsing        |
-| pydantic   | Data validation    |
-| typer      | CLI framework      |
-| rich       | Terminal UI        |
-| rapidfuzz  | Fuzzy searching    |
-| pyyaml     | YAML configuration |
-
----
-
-# Development
-
-Run tests:
+### Run the complete test suite
 
 ```bash
 pytest
 ```
 
-Run with debug logging:
+### Validate installed dependencies
 
 ```bash
-rss update --log-level DEBUG
+python -m pip check
 ```
 
----
+### Build distribution artifacts
 
-# Roadmap
-
-## Version 0.2
-
-* Better feed validation
-* More search operators
-* Improved topic extraction
-* Better logging
-
----
-
-## Version 0.3
-
-* SQLite storage
-* Database migrations
-* Article history
-
----
-
-## Version 0.4
-
-* AI summaries
-* Automatic article classification
-* Threat intelligence enrichment
-
----
-
-## Version 0.5
-
-* CVE lookup
-* Vulnerability correlation
-* IOC extraction
-
----
-
-## Version 0.6
-
-* MITRE ATT&CK mapping
-* Threat actor tracking
-
----
-
-## Version 0.7
-
-* REST API
-
-Example:
-
-```
-GET /articles
-GET /search
-GET /topics
+```bash
+python -m build
 ```
 
----
+Generated wheel and source distribution files are written to `dist/`.
 
-## Version 0.8
+## Dependencies
 
-* Web UI
+Runtime dependencies are declared in `pyproject.toml`.
 
-Features:
+| Package           | Purpose                        |
+| ----------------- | ------------------------------ |
+| `beautifulsoup4`  | HTML cleanup                   |
+| `feedparser`      | RSS and Atom parsing           |
+| `httpx`           | HTTP client                    |
+| `pydantic`        | Feed configuration validation  |
+| `python-dateutil` | Date handling                  |
+| `PyYAML`          | YAML configuration loading     |
+| `rapidfuzz`       | Fuzzy text matching            |
+| `rich`            | Terminal tables and formatting |
+| `scikit-learn`    | TF-IDF topic extraction        |
+| `typer`           | CLI framework                  |
 
-* dashboards
-* search interface
-* analytics
-* feed management
+Development dependencies:
 
----
+| Package          | Purpose                              |
+| ---------------- | ------------------------------------ |
+| `build`          | Wheel and source distribution builds |
+| `pytest`         | Test runner                          |
+| `pytest-asyncio` | Asynchronous test support            |
 
-## Version 1.0
+## Known limitations
 
-* Docker deployment
-* Production database
-* Plugin marketplace
-* Enterprise-ready deployment
+* JSON is the only implemented storage backend.
+* The CLI does not currently fetch or index complete article bodies.
+* Threat actor enrichment performs local name and alias matching; it is not full ATT&CK technique or campaign mapping.
+* Ambiguous threat actor aliases are skipped.
+* `rss search --limit` is currently accepted but not enforced.
+* No REST API or web interface is implemented.
+* No production database or migration system is implemented.
 
----
+## Roadmap
 
-# License
+Potential next stages:
 
-MIT License
+* enforce and expand search result controls
+* add IOC and threat actor CLI filters
+* improve IOC validation and false-positive handling
+* add ATT&CK technique, software, and relationship mapping
+* add CVE lookup and vulnerability enrichment
+* support SQLite and PostgreSQL repositories
+* add article history and database migrations
+* add full-article retrieval and summarization
+* provide REST API and web interfaces
+* add structured exports and alert integrations
+* add containerized deployment
 
-```
+Roadmap items are proposals and are not part of the current `0.1.0` implementation.
 
+## License
+
+No license is currently declared. The repository contains an empty `LICENSE` file, which should be populated before public distribution or third-party reuse.
