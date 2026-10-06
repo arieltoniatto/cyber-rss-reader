@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from parser.models import Article
 
 from .models import SearchFilters
+from parser.dates import normalize_datetime, publication_key
 
 
 def apply_filters(
@@ -14,7 +15,7 @@ def apply_filters(
 
     result = articles
 
-    now = datetime.now().astimezone()
+    now = datetime.now(timezone.utc)
 
     if filters.today:
 
@@ -22,7 +23,7 @@ def apply_filters(
             article
             for article in result
             if article.published
-            and article.published.date() == now.date()
+            and normalize_datetime(article.published).date() == now.date()
         ]
 
     if filters.last_week:
@@ -33,7 +34,7 @@ def apply_filters(
             article
             for article in result
             if article.published
-            and article.published >= cutoff
+            and normalize_datetime(article.published) >= cutoff
         ]
 
     if filters.category:
@@ -41,7 +42,7 @@ def apply_filters(
         result = [
             article
             for article in result
-            if article.category.lower()
+            if article.category and article.category.lower()
             == filters.category.lower()
         ]
 
@@ -54,23 +55,11 @@ def apply_filters(
             == filters.source.lower()
         ]
 
-    if filters.newest:
+    if filters.newest or filters.oldest:
+        result = sorted(result, key=publication_key, reverse=filters.newest)
 
-        result.sort(
-            key=lambda x: x.published or datetime.min.replace(
-                tzinfo=timezone.utc
-            ),
-            reverse=True,
-        )
-
-    elif filters.oldest:
-
-        result.sort(
-            key=lambda x: x.published or datetime.min.replace(
-                tzinfo=timezone.utc
-            ),
-            reverse=True,
-)
+    if filters.tag:
+        result = [a for a in result if any(tag.casefold() == filters.tag.casefold() for tag in a.tags)]
 
     if filters.limit is not None:
 

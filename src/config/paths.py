@@ -1,58 +1,27 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-FEED_DIRECTORY = (
-    PROJECT_ROOT
-    / "src"
-    / "config"
-    / "feeds"
-)
-
-CATALOG_DIRECTORY = (
-    PROJECT_ROOT
-    / "src"
-    / "config"
-    / "catalogs"
-)
-
-CACHE_DIRECTORY = PROJECT_ROOT / "cache"
-LOG_DIRECTORY = PROJECT_ROOT / "logs"
-DATA_DIRECTORY = PROJECT_ROOT / "data"
-
-MITRE_ATTACK_DIRECTORY = (
-    DATA_DIRECTORY
-    / "mitre-attack"
-)
-
-ARTICLE_CACHE_FILE = (
-    CACHE_DIRECTORY
-    / "articles.json"
-)
-
-APPLICATION_LOG_FILE = (
-    LOG_DIRECTORY
-    / "cyber-rss-reader.log"
-)
-
-THREAT_ACTOR_CATALOG_FILE = (
-    CATALOG_DIRECTORY
-    / "threat_actors.json"
-)
-
-THREAT_ACTOR_OVERRIDES_FILE = (
-    CATALOG_DIRECTORY
-    / "threat_actor_overrides.json"
-)
+PACKAGE_DIRECTORY = Path(__file__).resolve().parent
+# Runtime data is independent of the installed package and can be mounted.
+RUNTIME_DIRECTORY = Path(os.environ.get("CYBER_RSS_DATA_DIR", str(Path.cwd())))
+FEED_DIRECTORY = Path(os.environ.get("CYBER_RSS_FEED_DIR", str(PACKAGE_DIRECTORY / "feeds")))
+CATALOG_DIRECTORY = Path(os.environ.get("CYBER_RSS_CATALOG_DIR", str(PACKAGE_DIRECTORY / "catalogs")))
+CACHE_DIRECTORY = RUNTIME_DIRECTORY / "cache"
+LOG_DIRECTORY = RUNTIME_DIRECTORY / "logs"
+DATA_DIRECTORY = RUNTIME_DIRECTORY / "data"
+MITRE_ATTACK_DIRECTORY = DATA_DIRECTORY / "mitre-attack"
+ARTICLE_CACHE_FILE = CACHE_DIRECTORY / "articles.json"
+ARTICLE_DATABASE_FILE = DATA_DIRECTORY / "articles.sqlite3"
+BACKUP_DIRECTORY = Path(os.environ.get("CYBER_RSS_BACKUP_DIR", str(DATA_DIRECTORY / "backups")))
+APPLICATION_LOG_FILE = LOG_DIRECTORY / "cyber-rss-reader.log"
+THREAT_ACTOR_CATALOG_FILE = CATALOG_DIRECTORY / "threat_actors.json"
+MALWARE_CATALOG_FILE = CATALOG_DIRECTORY / "malware.json"
+THREAT_ACTOR_OVERRIDES_FILE = CATALOG_DIRECTORY / "threat_actor_overrides.json"
 
 
 def ensure_runtime_directories() -> None:
-    CACHE_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    FEED_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    DATA_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    CATALOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
-    MITRE_ATTACK_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    for directory in (CACHE_DIRECTORY, LOG_DIRECTORY, DATA_DIRECTORY, MITRE_ATTACK_DIRECTORY):
+        directory.mkdir(parents=True, exist_ok=True)

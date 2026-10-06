@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+import hashlib
+import json
+from urllib.parse import urlsplit, urlunsplit
 from datetime import datetime
+
+from parser.dates import normalize_datetime
 
 from parser.models import Article, IOC, IOCType
 
@@ -12,7 +16,15 @@ def article_key(article: Article) -> str:
 
     URL is preferred because it is typically unique.
     """
-    return article.url.strip().lower()
+    url = article.url.strip()
+    if url:
+        parts = urlsplit(url)
+        return "url:" + urlunsplit((parts.scheme.lower(), parts.netloc.lower(),
+                                   parts.path, parts.query, ""))
+    identity = json.dumps([article.source, article.title,
+                           normalize_datetime(article.published).isoformat()
+                           if article.published else None], ensure_ascii=False)
+    return "fallback:" + hashlib.sha256(identity.encode()).hexdigest()
 
 def ioc_to_dict(ioc: IOC) -> dict[str, str]:
     """
@@ -70,7 +82,7 @@ def article_to_dict(
         "category": article.category,
         "author": article.author,
         "published": (
-            article.published.isoformat()
+            normalize_datetime(article.published).isoformat()
             if article.published
             else None
         ),
@@ -79,6 +91,7 @@ def article_to_dict(
             ioc_to_dict(ioc)
             for ioc in article.iocs
         ],
+        "malware": list(article.malware),
         "threat_actors": list(
             article.threat_actors
         ),
@@ -89,7 +102,7 @@ def article_from_dict(data: dict) -> Article:
     published = data.get("published")
 
     if published:
-        published = datetime.fromisoformat(published)
+        published = normalize_datetime(datetime.fromisoformat(published))
 
     raw_tags = data.get("tags", [])
 
@@ -111,6 +124,11 @@ def article_from_dict(data: dict) -> Article:
         "threat_actors",
         [],
     )
+
+    raw_malware = data.get("malware", [])
+    malware = [value.strip() for value in raw_malware
+               if isinstance(value, str) and value.strip()] \
+        if isinstance(raw_malware, list) else []
 
     threat_actors = (
         [
@@ -143,5 +161,6 @@ def article_from_dict(data: dict) -> Article:
         published=published,
         tags=tags,
         iocs=iocs,
+        malware=malware,
         threat_actors=threat_actors,
     )

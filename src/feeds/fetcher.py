@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 import feedparser
 
@@ -41,45 +42,43 @@ class RSSFetcher:
             user_agent=user_agent,
         )
 
-        self.semaphore = asyncio.Semaphore(concurrency)
+        self.concurrency = concurrency
 
     async def fetch_all(self) -> list[FeedResult]:
 
         tasks = []
-
-        print(
-            "Categories:",
-            len(self.configuration.categories)
-        )
+        semaphore = asyncio.Semaphore(self.concurrency)
 
         for category in self.configuration.categories:
 
             for feed in category.feeds:
-                tasks.append(self._fetch(feed))
+                tasks.append(self._fetch(feed, semaphore))
 
         results = await asyncio.gather(
             *tasks,
             return_exceptions=True,
         )
 
-        successful: list[FeedResult] = []
+        outcomes: list[FeedResult] = []
 
         for result in results:
 
             if isinstance(result, FeedResult):
-                successful.append(result)
+                outcomes.append(result)
 
             elif isinstance(result, Exception):
-                logger.exception(result)
+                logger.error("Feed collection failed: %s", result)
 
-        return successful
+        return outcomes
 
     async def _fetch(
         self,
         feed: Feed,
-    ) -> FeedResult | Exception:
+        semaphore: asyncio.Semaphore,
+    ) -> FeedResult:
 
-        async with self.semaphore:
+        async with semaphore:
+            attempted_at = datetime.now(timezone.utc)
 
             try:
 
@@ -88,6 +87,8 @@ class RSSFetcher:
                 xml = await self.client.fetch(str(feed.url))
 
                 parsed = feedparser.parse(xml)
+                if not parsed.version:
+                    raise ValueError("Response is not an RSS/Atom feed")
 
                 warnings: list[str] = []
 
@@ -107,6 +108,7 @@ class RSSFetcher:
                     feed=feed,
                     parsed=parsed,
                     warnings=warnings,
+                    attempted_at=attempted_at,
                 )
 
             except Exception as exc:
@@ -117,4 +119,7 @@ class RSSFetcher:
                     exc,
                 )
 
-                return exc
+                return FeedResult(
+                    feed=feed, parsed=feedparser.FeedParserDict(entries=[]),
+                    error=f"{type(exc).__name__}: {exc}", attempted_at=attempted_at,
+                )

@@ -80,3 +80,9 @@ data/mitre-attack/*.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# SQLite archive and collector lock
+data/*.sqlite3*
+data/*.worker.lock
+data/backups/
+deploy/generated/

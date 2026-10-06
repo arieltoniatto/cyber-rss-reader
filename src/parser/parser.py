@@ -56,7 +56,7 @@ class RSSParser:
                         entry,
                         "summary",
                         "description",
-                    ),
+                    ) or "",
 
                     url=first_available(
                         entry,

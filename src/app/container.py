@@ -5,8 +5,9 @@ from datetime import timedelta
 from pathlib import Path
 
 from config.paths import (
-    ARTICLE_CACHE_FILE,
+    ARTICLE_DATABASE_FILE,
     FEED_DIRECTORY,
+    MALWARE_CATALOG_FILE,
     THREAT_ACTOR_CATALOG_FILE,
 )
 from config.loader import ConfigLoader
@@ -14,6 +15,7 @@ from config.models import FeedConfiguration
 from enrichment.pipeline import EnrichmentPipeline
 from enrichment.tag_enricher import TagEnricher
 from enrichment.ioc_enricher import IOCEnricher
+from enrichment.malware_enricher import MalwareEnricher
 from enrichment.threat_actor_enricher import ThreatActorEnricher
 from feeds.fetcher import RSSFetcher
 from parser.parser import RSSParser
@@ -24,6 +26,7 @@ from services.topic_service import TopicExtractionService
 from services.topic_service import TopicService
 from storage.interfaces import ArticleRepository
 from storage.json_storage import JsonArticleRepository
+from storage.sqlite_storage import SQLiteArticleRepository
 from topics.algorithms.tfidf import TFIDFTopicExtractor
 
 
@@ -38,20 +41,11 @@ class ApplicationContainer:
         self,
         *,
         config_directory: Path = FEED_DIRECTORY,
-        cache_file: Path = ARTICLE_CACHE_FILE,
+        cache_file: Path | None = None,
+        database_file: Path = ARTICLE_DATABASE_FILE,
         cache_duration: timedelta = timedelta(hours=6),
         log_level: int = logging.WARNING,
     ) -> None:
-
-        config_directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        cache_file.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
 
         self._configure_logging(log_level)
 
@@ -71,9 +65,9 @@ class ApplicationContainer:
         # Infrastructure
         ################################################################
 
-        self.repository: ArticleRepository = JsonArticleRepository(
-            cache_file=cache_file,
-            cache_duration=cache_duration,
+        self.repository: ArticleRepository = (
+            JsonArticleRepository(cache_file, cache_duration) if cache_file is not None
+            else SQLiteArticleRepository(database_file, cache_duration)
         )
 
         self.fetcher = RSSFetcher(
@@ -104,6 +98,10 @@ class ApplicationContainer:
 
         self.ioc_enricher = IOCEnricher()
 
+        self.malware_enricher = MalwareEnricher(
+            catalog_file=MALWARE_CATALOG_FILE,
+        )
+
         self.threat_actor_enricher = (
             ThreatActorEnricher(
                 catalog_file=THREAT_ACTOR_CATALOG_FILE,
@@ -114,6 +112,7 @@ class ApplicationContainer:
             enrichers=[
                 self.tag_enricher,
                 self.ioc_enricher,
+                self.malware_enricher,
                 self.threat_actor_enricher,
             ],
             continue_on_error=True,

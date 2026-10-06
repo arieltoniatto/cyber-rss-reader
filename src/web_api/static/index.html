@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101817">
+  <title>Cyber RSS — Radar de ameaças</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Ir para o conteúdo</a>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar" aria-label="Navegação">
+      <a class="brand" href="/" aria-label="Cyber RSS, início"><span class="brand-mark" aria-hidden="true">C<span>↗</span></span><span>CYBER<span class="brand-light"> / RSS</span><small>THREAT INTELLIGENCE READER</small></span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav class="main-nav" aria-label="Seções">
+        <button id="nav-articles" class="nav-button active" type="button"><span aria-hidden="true">▤</span> Artigos <span class="nav-dot"></span></button>
+        <button id="nav-feeds" class="nav-button" type="button"><span aria-hidden="true">◉</span> Coleta de feeds <span id="nav-errors" class="error-count" hidden></span></button>
+      </nav>
+      <div class="category-heading"><p class="nav-label">CATEGORIAS</p><button id="all-categories" class="text-button" type="button">Todas</button></div>
+      <nav id="categories" class="categories" aria-label="Categorias de artigos"></nav>
+      <div class="sidebar-footer"><span class="status-dot" aria-hidden="true"></span><div>Arquivo local<small>Histórico preservado</small></div><a href="/docs" title="Documentação da API" aria-label="Documentação da API">↗</a></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Abrir navegação" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-section">Artigos</strong></div><div class="topbar-right"><span class="read-only"><span class="status-dot" aria-hidden="true"></span> Consulta ao arquivo</span><button id="refresh" class="secondary-button" type="button">↻ Atualizar tela</button></div></header>
+      <main id="main" tabindex="-1">
+        <section class="intro"><div><p class="eyebrow">INTELIGÊNCIA EM SEGURANÇA</p><h1 id="page-title">Seu radar de ameaças<span>.</span></h1><p id="page-description">Notícias, pesquisas e indicadores em um só lugar.</p></div><span class="intro-chip"><span aria-hidden="true">◈</span> CYBER INTELLIGENCE</span></section>
+        <section class="stats" aria-label="Resumo do arquivo e coleta">
+          <div class="stat"><span>ARTIGOS NO ARQUIVO</span><strong id="stat-articles">—</strong><small>Histórico disponível</small></div>
+          <div class="stat"><span>FEEDS COM SUCESSO</span><strong id="stat-feeds">—</strong><small id="stat-feeds-note">Aguardando estado da coleta</small></div>
+          <button id="stat-errors-button" class="stat stat-clickable" type="button"><span>FEEDS COM ERRO</span><strong id="stat-errors">—</strong><small>Ver fontes que precisam de atenção ↗</small></button>
+          <div class="stat"><span>ÚLTIMO SUCESSO</span><strong id="stat-success" class="stat-time">—</strong><small id="stat-success-note">Nenhuma coleta registrada</small></div>
+        </section>
+        <div id="global-message" class="global-message" role="status" hidden></div>
+        <section id="articles-section" aria-label="Artigos">
+          <form id="search-form" class="search-form"><label class="sr-only" for="search">Buscar artigos</label><span class="search-icon" aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Busque por malware, CVE ou ameaça…" maxlength="500" autocomplete="off"><button class="primary-button" type="submit">Buscar <span aria-hidden="true">↗</span></button></form>
+          <form id="filters-form" class="filters-form"><div><label for="source">Fonte</label><select id="source"><option value="">Todas as fontes</option></select></div><div><label for="tag">Tag</label><input id="tag" list="tag-options" placeholder="Todas as tags" maxlength="200" autocomplete="off"><datalist id="tag-options"></datalist></div><button id="clear-filters" class="text-button" type="button">Limpar filtros</button><span class="sort-note">↓ Mais recentes primeiro</span></form>
+          <div class="results-heading"><div><h2 id="results-title">Últimos artigos</h2><span id="results-note">Preparando seu radar…</span></div><span id="active-category" class="pill category-pill" hidden></span></div>
+          <div id="articles-message" class="empty-state" role="status" hidden></div>
+          <div id="article-list" class="article-list" aria-live="polite" aria-busy="false"></div>
+          <div id="article-pagination" class="pagination"><button id="previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="page-number">Página 1</span><button id="next" class="secondary-button" type="button" disabled>Próxima →</button></div>
+        </section>
+        <section id="feeds-section" aria-label="Estado de coleta dos feeds" hidden>
+          <div class="feeds-toolbar"><div><h2>Fontes monitoradas</h2><p>O último resultado de cada feed, sem perder o histórico.</p></div><label>Estado <select id="feed-filter"><option value="">Todos os estados</option><option value="success">Com sucesso</option><option value="error">Com erro</option><option value="collecting">Coletando</option></select></label></div>
+          <div id="feeds-message" class="empty-state" role="status" hidden></div><div id="feed-list" class="feed-list" aria-live="polite"></div>
+          <div class="pagination"><button id="feeds-previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="feeds-page">Página 1</span><button id="feeds-next" class="secondary-button" type="button" disabled>Próxima →</button></div>
+        </section>
+        <footer class="page-footer"><span>CYBER / RSS</span> Informação para acompanhar. Contexto para investigar.</footer>
+        <noscript><p class="empty-state">Ative o JavaScript para consultar o arquivo e o estado dos feeds.</p></noscript>
+      </main>
+    </div>
+  </div>
+  <dialog id="article-dialog" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">DETALHES DO ARTIGO</span><button id="close-detail" class="icon-button" type="button" aria-label="Fechar detalhes">×</button></div><div id="detail-content"></div></dialog>
+</body>
+</html>

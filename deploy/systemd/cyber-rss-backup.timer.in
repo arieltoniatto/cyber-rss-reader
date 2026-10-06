@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily backup of the Cyber RSS archive
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15m
+Unit=cyber-rss-backup.service
+
+[Install]
+WantedBy=timers.target

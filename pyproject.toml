@@ -25,7 +25,12 @@ dependencies = [
 
 
 [project.optional-dependencies]
+web = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+browser = ["playwright>=1.50,<2"]
+
 dev = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
     "build",
     "pytest",
     "pytest-asyncio",
@@ -34,7 +39,13 @@ dev = [
 
 [project.scripts]
 rss = "app.main:main"
+rss-api = "web_api.app:main"
+rss-worker = "app.worker:main"
+rss-import-json = "tools.import_json_cache:main"
+rss-backup = "tools.backup_database:main"
+rss-restore = "tools.restore_database:main"
 rss-update-actors = "tools.update_threat_actor_catalog:main"
+rss-update-malware = "tools.update_malware_catalog:main"
 
 
 [tool.setuptools]
@@ -46,6 +57,7 @@ where = ["src"]
 
 
 [tool.setuptools.package-data]
+web_api = ["static/*.html", "static/*.css", "static/*.js"]
 config = [
     "feeds/*.yaml",
     "feeds/*.yml",

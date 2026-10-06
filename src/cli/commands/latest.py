@@ -44,7 +44,7 @@ def register(app, services):
             tag=tag,
             limit=limit,
         )
-        
+
         try:
             articles = asyncio.run(
                 services.article_service.latest(query)
@@ -53,10 +53,5 @@ def register(app, services):
         except InvalidCategoryError as error:
             typer.echo(error)
             raise typer.Exit(code=1)
-
-        articles.sort(
-            key=lambda article: article.published or datetime.min,
-            reverse=True,
-        )
 
         article_table(articles)

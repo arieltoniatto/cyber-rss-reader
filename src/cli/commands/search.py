@@ -18,6 +18,7 @@ def register(app, services):
             keywords=[keyword] if keyword else None,
             category=category,
             source=source,
+            limit=limit,
         )
 
         article_table(articles)

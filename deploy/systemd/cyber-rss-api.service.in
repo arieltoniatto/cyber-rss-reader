@@ -1,0 +1,18 @@
+[Unit]
+Description=Cyber RSS web interface and read-only API
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=exec
+WorkingDirectory=@PROJECT@
+EnvironmentFile=@ENVIRONMENT@
+ExecStart=@PYTHON@ -m web_api.app --host 127.0.0.1 --port @PORT@
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from dataclasses import replace
+from config.models import FeedConfiguration
+from feeds.models import FeedObservation
+from parser.dates import publication_key
+from storage.utils import article_key
 
 from feeds.fetcher import RSSFetcher
 from parser.models import Article
@@ -69,7 +74,7 @@ class ArticleService:
     ) -> None:
         available = self._available_categories(articles)
 
-        if category not in available:
+        if category.casefold() not in {value.casefold() for value in available}:
             raise InvalidCategoryError(
                 f"Unknown category: {category}.\n"
                 f"Available categories: {', '.join(available)}"
@@ -123,54 +128,59 @@ class ArticleService:
 
         logger.info("Downloading feeds...")
 
-        feed_results = await self._fetcher.fetch_all()
+        configuration = getattr(self._fetcher, "configuration", None)
+        configured_feeds = [feed for category in configuration.categories for feed in category.feeds] \
+            if isinstance(configuration, FeedConfiguration) else []
+        self._repository.begin_feed_collection(configured_feeds)
+        try:
+            feed_results = await self._fetcher.fetch_all()
+        except Exception as exc:
+            now = datetime.now(timezone.utc)
+            self._repository.save_collection([], [FeedObservation(
+                feed=feed, attempted_at=now, completed_at=now,
+                error=f"{type(exc).__name__}: {exc}",
+            ) for feed in configured_feeds])
+            raise
 
-        logger.info(
-            "Fetched %d feeds.",
-            len(feed_results),
-        )
+        articles: list[Article] = []
+        observations: list[FeedObservation] = []
+        for result in feed_results:
+            error = result.error
+            parsed_articles = []
+            if error is None:
+                try:
+                    parsed_articles = self._parser.parse([result])
+                except Exception as exc:
+                    error = f"Parser {type(exc).__name__}: {exc}"
+                    logger.exception("Parsing failed for %s", result.feed.name)
+            articles.extend(parsed_articles)
+            observations.append(FeedObservation(
+                feed=result.feed, attempted_at=result.attempted_at,
+                completed_at=datetime.now(timezone.utc), error=error,
+                article_count=len({article_key(a) for a in parsed_articles}),
+                warnings=result.warnings,
+            ))
 
-        articles = self._parser.parse(feed_results)
+        logger.info("Attempted %d feeds; parsed %d articles", len(feed_results), len(articles))
+        try:
+            enriched = await self._enrichment_pipeline.enrich_many(articles) if articles else []
+            completed_at = datetime.now(timezone.utc)
+            observations = [replace(o, completed_at=completed_at) for o in observations]
+            self._repository.save_collection(enriched, observations)
+        except Exception as exc:
+            failed = [replace(o, completed_at=datetime.now(timezone.utc), article_count=0,
+                              error=o.error or f"Processing {type(exc).__name__}: {exc}")
+                      for o in observations]
+            self._repository.save_collection([], failed)
+            raise
 
-        logger.info(
-            "Parsed %d articles.",
-            len(articles),
-        )
-
-        if not articles:
-            logger.warning(
-                "No articles parsed. Cache not refreshed."
-            )
-
-            return UpdateResult(
-                feeds_downloaded=len(feed_results),
-                articles_parsed=0,
-                articles_saved=0,
-                cache_used=False,
-            )
-
-        logger.info(
-            "Enriching %d articles.",
-            len(articles),
-        )
-
-        enriched_articles = await self._enrichment_pipeline.enrich_many(
-            articles
-        )
-
-        logger.info(
-            "Enriched %d articles.",
-            len(enriched_articles),
-        )
-
-        self._repository.refresh(enriched_articles)
-
-        logger.info("Cache refreshed.")
-
+        failures = sum(o.error is not None for o in observations)
+        logger.info("Saved %d unique articles; %d feeds failed", len({article_key(a) for a in enriched}), failures)
         return UpdateResult(
-            feeds_downloaded=len(feed_results),
+            feeds_downloaded=sum(result.error is None for result in feed_results),
+            feeds_failed=failures,
             articles_parsed=len(articles),
-            articles_saved=len(enriched_articles),
+            articles_saved=len({article_key(article) for article in enriched}),
             cache_used=False,
         )
 
@@ -179,57 +189,10 @@ class ArticleService:
         query: LatestQuery,
     ) -> list[Article]:
 
-        articles = self._repository.load()
-
-        if query.category:
-            self._validate_category(
-                query.category,
-                articles,
-            )
-
-            requested_category = query.category.casefold()
-
-            articles = [
-                article
-                for article in articles
-                if article.category
-                and article.category.casefold() == requested_category
-            ]
-
-
-        if query.source:
-            self._validate_source(
-                query.source,
-                articles,
-            )
-
-            requested_source = query.source.casefold()
-
-            articles = [
-                article
-                for article in articles
-                if article.source
-                and article.source.casefold() == requested_source
-            ]
-
-        if query.tag:
-            requested_tag = query.tag.casefold()
-
-            articles = [
-                article
-                for article in articles
-                if any(
-                    tag.casefold() == requested_tag
-                    for tag in article.tags
-                )
-            ]
-
-        articles.sort(
-            key=lambda article: article.published or datetime.min,
-            reverse=True,
+        return self._repository.latest(
+            category=query.category, source=query.source, tag=query.tag,
+            limit=query.limit, offset=query.offset,
         )
-
-        return articles[:query.limit]
 
     async def by_source(
         self,
@@ -249,7 +212,7 @@ class ArticleService:
             if article.source.lower() == source_lower
         ]
 
-        return filtered_articles[:limit]
+        return sorted(filtered_articles, key=publication_key, reverse=True)[:limit]
 
     async def by_category(
         self,
@@ -266,7 +229,7 @@ class ArticleService:
         filtered_articles = [
             article
             for article in articles
-            if article.category.lower() == category_lower
+            if article.category and article.category.lower() == category_lower
         ]
 
-        return filtered_articles[:limit]
+        return sorted(filtered_articles, key=publication_key, reverse=True)[:limit]

@@ -37,6 +37,7 @@ class SearchService:
         exclude: list[str] | None = None,
         category: str | None = None,
         source: str | None = None,
+        tag: str | None = None,
         today: bool = False,
         last_week: bool = False,
         newest: bool = True,
@@ -72,6 +73,7 @@ class SearchService:
         )
 
         filters = SearchFilters(
+            tag=tag,
             today=today,
             last_week=last_week,
             category=category,

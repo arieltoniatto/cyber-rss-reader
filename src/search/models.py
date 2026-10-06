@@ -15,6 +15,7 @@ class SearchFilters:
 
     category: str | None = None
     source: str | None = None
+    tag: str | None = None
 
     newest: bool = False
     oldest: bool = False

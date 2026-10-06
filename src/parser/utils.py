@@ -5,6 +5,7 @@ from email.utils import parsedate_to_datetime
 import html
 from typing import Any
 from bs4 import BeautifulSoup
+from parser.dates import normalize_datetime
 
 
 def clean_html(text: str) -> str:
@@ -38,7 +39,7 @@ def parse_datetime(value: str | None) -> datetime | None:
         return None
 
     try:
-        return parsedate_to_datetime(value)
+        return normalize_datetime(parsedate_to_datetime(value))
     except Exception:
         return None
 
@@ -94,9 +95,7 @@ def parse_published(entry) -> datetime | None:
 
     if value:
         try:
-            return parsedate_to_datetime(
-                value
-            ).date()
+            return normalize_datetime(parsedate_to_datetime(value))
 
         except Exception:
             return None

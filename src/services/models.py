@@ -8,12 +8,13 @@ class UpdateResult:
     """
     Result returned by ArticleService.update().
     """
-    
+
 
     feeds_downloaded: int
     articles_parsed: int
     articles_saved: int
     cache_used: bool
+    feeds_failed: int = 0
 
 @dataclass(slots=True, frozen=True)
 class LatestQuery:
@@ -21,3 +22,4 @@ class LatestQuery:
     source: str | None = None
     tag: str | None = None
     limit: int = 20
+    offset: int = 0

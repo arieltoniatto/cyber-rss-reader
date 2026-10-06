@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from parser.dates import normalize_datetime
 from pathlib import Path
 
 from parser.models import Article
@@ -39,7 +40,7 @@ class JsonArticleRepository(ArticleRepository):
             unique[article_key(article)] = article
 
         payload = {
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "articles": [
                 article_to_dict(article)
                 for article in unique.values()
@@ -116,10 +117,8 @@ class JsonArticleRepository(ArticleRepository):
         if not articles:
             return False
 
-        created = datetime.fromisoformat(
-            payload["created_at"]
-        )
+        created = normalize_datetime(datetime.fromisoformat(payload["created_at"]))
 
         expires = created + self.cache_duration
 
-        return datetime.utcnow() < expires
+        return datetime.now(timezone.utc) < expires

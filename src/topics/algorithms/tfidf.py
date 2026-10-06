@@ -37,7 +37,12 @@ class TFIDFTopicExtractor(TopicExtractor):
             max_features=500,
         )
 
-        matrix = vectorizer.fit_transform(documents)
+        try:
+            matrix = vectorizer.fit_transform(documents)
+        except ValueError as exc:
+            if "empty vocabulary" in str(exc):
+                return []
+            raise
 
         scores = matrix.sum(axis=0).A1
 

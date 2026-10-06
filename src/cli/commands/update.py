@@ -26,6 +26,7 @@ def register(app: typer.Typer, services: CLIServices) -> None:
         typer.echo()
 
         typer.echo(f"Feeds downloaded : {result.feeds_downloaded}")
+        typer.echo(f"Feeds failed     : {result.feeds_failed}")
         typer.echo(f"Articles parsed  : {result.articles_parsed}")
         typer.echo(f"Articles saved   : {result.articles_saved}")
 

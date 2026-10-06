@@ -1,0 +1,11 @@
+[Unit]
+Description=Cyber RSS verified online SQLite backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT@
+EnvironmentFile=@ENVIRONMENT@
+ExecStart=@PYTHON@ -m tools.backup_database --keep @KEEP@
+TimeoutStartSec=300
+UMask=0077
+NoNewPrivileges=true

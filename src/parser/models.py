@@ -46,4 +46,5 @@ class Article:
 
     tags: list[str] = field(default_factory=list)
     iocs: list[IOC] = field(default_factory=list)
+    malware: list[str] = field(default_factory=list)
     threat_actors: list[str] = field(default_factory=list)
