@@ -57,7 +57,7 @@ where = ["src"]
 
 
 [tool.setuptools.package-data]
-web_api = ["static/*.html", "static/*.css", "static/*.js"]
+web_api = ["static/*.html", "static/*.css", "static/*.js", "static/fonts/*.ttf", "static/fonts/*.txt"]
 config = [
     "feeds/*.yaml",
     "feeds/*.yml",

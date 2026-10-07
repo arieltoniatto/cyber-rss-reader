@@ -1,0 +1,39 @@
+x-runtime: &runtime
+  build: .
+  image: cyber-rss-reader:local
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs:
+    - /tmp
+  volumes:
+    - archive:/runtime
+
+services:
+  api:
+    <<: *runtime
+    ports:
+      - "127.0.0.1:${CYBER_RSS_WEB_PORT:-8001}:8000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+  worker:
+    <<: *runtime
+    command: [python, -m, app.worker, --interval, "21600"]
+    depends_on:
+      api:
+        condition: service_healthy
+  backup:
+    <<: *runtime
+    command: [python, -m, tools.backup_worker, --interval, "86400", --keep, "14"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  archive:

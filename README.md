@@ -724,6 +724,11 @@ documented in [deploy/HTTPS.md](deploy/HTTPS.md).
 
 ### Continuous operation and backups
 
+Docker Compose is also available: run `docker compose up -d --build` and open
+`http://127.0.0.1:8001`. The API, collector and daily backup share a persistent
+Docker volume. See [deploy/DOCKER.md](deploy/DOCKER.md) for startup, existing
+archive import and switching between Docker and native services.
+
 User systemd units for the API, worker and daily backup are supplied under
 `deploy/systemd`. Render/install instructions, monitoring commands and recovery
 steps are documented in [deploy/README.md](deploy/README.md).
@@ -833,7 +838,6 @@ Potential next stages:
 - add full-article retrieval and summarization
 - provide authenticated API operations
 - add structured exports and alert integrations
-- add containerized deployment
 
 Roadmap items are proposals and are not part of the current `0.1.0` implementation.
 

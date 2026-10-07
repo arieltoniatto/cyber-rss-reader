@@ -1,5 +1,7 @@
 # Continuous local operation
 
+For the Docker alternative, see [DOCKER.md](DOCKER.md).
+
 The API, worker and daily backup run as **user systemd services**. They use the
 existing Python environment and one persistent archive. For personal use on
 this computer, open `http://127.0.0.1:8000`. The API binds only to loopback and

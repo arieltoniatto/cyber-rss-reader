@@ -1,0 +1,11 @@
+# Allow only package build inputs. Runtime databases, secrets and local backups
+# never enter the build context.
+**
+!Dockerfile
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/**
+**/__pycache__/
+**/*.py[cod]

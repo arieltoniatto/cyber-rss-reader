@@ -16,7 +16,7 @@ feeds:
 
   - name: Black Hills Information Security
     url: https://www.blackhillsinfosec.com/feed/
-    enabled: true
+    enabled: false
     description: Threat hunting, penetration testing, and defense.
     category: threat_hunting
 
