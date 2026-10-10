@@ -93,6 +93,7 @@ def article_to_dict(
             for ioc in article.iocs
         ],
         "attack": asdict(article.attack) if article.attack else None,
+        "cve_ids": list(article.cve_ids),
         "malware": list(article.malware),
         "threat_actors": list(
             article.threat_actors
@@ -174,5 +175,7 @@ def article_from_dict(data: dict) -> Article:
         iocs=iocs,
         malware=malware,
         attack=attack,
+        cve_ids=sorted({value for value in data.get("cve_ids", []) if isinstance(value, str)})
+            if isinstance(data.get("cve_ids", []), list) else [],
         threat_actors=threat_actors,
     )

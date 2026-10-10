@@ -19,6 +19,8 @@ from enrichment.ioc_enricher import IOCEnricher
 from enrichment.malware_enricher import MalwareEnricher
 from enrichment.threat_actor_enricher import ThreatActorEnricher
 from enrichment.attack_enricher import AttackEnricher
+from enrichment.cve_enricher import CVEEnricher
+from services.vulnerability_service import VulnerabilityService
 from cti.attack_mapping import AttackCatalog
 from services.attack_service import AttackService
 from feeds.fetcher import RSSFetcher
@@ -111,6 +113,9 @@ class ApplicationContainer:
 
         self.attack_catalog = AttackCatalog.load(ATTACK_MAPPING_CATALOG_FILE)
         self.attack_enricher = AttackEnricher(self.attack_catalog)
+        self.cve_enricher = CVEEnricher()
+        self.vulnerability_service = VulnerabilityService(
+            (cache_file.parent if cache_file is not None else database_file.parent) / "cve-cache.sqlite3")
 
         self.enrichment_pipeline = EnrichmentPipeline(
             enrichers=[
@@ -119,6 +124,7 @@ class ApplicationContainer:
                 self.malware_enricher,
                 self.threat_actor_enricher,
                 self.attack_enricher,
+                self.cve_enricher,
             ],
             continue_on_error=True,
         )

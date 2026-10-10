@@ -25,6 +25,8 @@ from starlette.concurrency import run_in_threadpool
 
 from config.paths import ARTICLE_DATABASE_FILE, ATTACK_MAPPING_CATALOG_FILE
 from cti.attack_mapping import AttackCatalog
+from cti.cve import normalize_cve
+from services.vulnerability_service import VulnerabilityService
 from search.engine import SearchEngine
 from search.models import SearchOrder, SearchPeriod, SearchMatch
 from services.search_service import SearchService
@@ -39,6 +41,11 @@ from web_api.security import AccessMiddleware, SecuritySettings
 class CollectionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     force_refresh: StrictBool = True
+
+
+class CVELookupRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    refresh: StrictBool = False
 
 
 class FeedInput(BaseModel):
@@ -69,13 +76,15 @@ def create_app(repository: ArticleRepository | None = None, *,
                collection_service_factory=None,
                feed_directory: Path = FEED_DIRECTORY,
                backup_directory: Path | None = None,
-               attack_catalog_file: Path = ATTACK_MAPPING_CATALOG_FILE) -> FastAPI:
+               attack_catalog_file: Path = ATTACK_MAPPING_CATALOG_FILE,
+               vulnerability_service: VulnerabilityService | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
                                 await run_in_threadpool(SQLiteArticleRepository, database_file))
         archive = getattr(app.state.repository, 'database_file', database_file)
         app.state.attack_catalog = await run_in_threadpool(AttackCatalog.load, attack_catalog_file)
+        app.state.vulnerabilities = vulnerability_service or VulnerabilityService(Path(archive).parent / "cve-cache.sqlite3")
         app.state.feed_registry = FeedRegistry(archive, feed_directory)
         app.state.collection = CollectionController(archive, collection_service_factory or (
             lambda: ApplicationContainer(
@@ -184,6 +193,23 @@ def create_app(repository: ArticleRepository | None = None, *,
         except CollectorBusy:
             raise HTTPException(status_code=409, detail='A collection is already running')
 
+    def cve_identifier(value):
+        try:
+            return normalize_cve(value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    @app.get('/vulnerabilities/{cve_id}')
+    def cached_vulnerability(cve_id: str, response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        return app.state.vulnerabilities.cached(cve_identifier(cve_id))
+
+    @app.post('/vulnerabilities/{cve_id}')
+    def lookup_vulnerability(cve_id: str, body: CVELookupRequest, request: Request, response: Response):
+        require_action(request)
+        response.headers['Cache-Control'] = 'no-store'
+        return app.state.vulnerabilities.lookup(cve_identifier(cve_id), refresh=body.refresh)
+
     @app.get("/health")
     def health():
         app.state.repository.latest(limit=1)
@@ -203,7 +229,8 @@ def create_app(repository: ArticleRepository | None = None, *,
         details = catalog.describe(mapping) if catalog else {
             'status': 'unavailable', 'catalog_version': article.attack.catalog_version if article.attack else None,
             'techniques': [], 'campaigns': [], 'relationships': []}
-        return {**serialize(article), 'attack': asdict(mapping) if mapping else None, 'attack_details': details}
+        return {**serialize(article), 'attack': asdict(mapping) if mapping else None, 'attack_details': details,
+                'vulnerabilities': app.state.vulnerabilities.for_article(article)}
 
     @app.get("/articles")
     def articles(category: str | None = Query(None, max_length=200),

@@ -73,6 +73,8 @@ Articles pass through an asynchronous enrichment pipeline in this order:
 2. `IOCEnricher`
 3. `MalwareEnricher`
 4. `ThreatActorEnricher`
+5. `AttackEnricher`
+6. `CVEEnricher`
 
 The pipeline returns new immutable article instances and can continue processing when an individual enricher fails.
 
@@ -115,7 +117,8 @@ candidates, and IPv4-like numbers explicitly introduced as versions/builds.
 URL hosts still support domains such as `evil.zip`. IPv4 embedded in an IPv6
 address does not become a separate IPv4 IOC. Private IPs are retained.
 These are syntactically valid observables, not a verdict that a host is malicious
-or a CVE exists; no DNS, reputation or vulnerability lookup is performed.
+or a CVE exists; IOC extraction performs no DNS, reputation or vulnerability lookup.
+CVE record lookup is a separate explicit operation described below.
 
 #### Malware detection
 
@@ -499,6 +502,66 @@ rss category threat_intelligence
 ```bash
 rss category malware --limit 10
 ```
+
+### CVE lookup and vulnerability enrichment
+
+`CVEEnricher` records deduplicated `Article.cve_ids` from mentioned CVEs, existing
+CVE IOCs and tags. Collection remains offline for this step. Public vulnerability
+records are resolved on demand from the official [CVE Services API](https://github.com/CVEProject/cve-services),
+in [CVE JSON 5 format](https://github.com/CVEProject/cve-schema), without an API key.
+Only the CVE ID is sent to the provider; article text is never sent.
+
+```bash
+rss cve CVE-2021-44228
+rss cve CVE-2021-44228 --offline
+rss cve CVE-2021-44228 --refresh
+rss vulnerabilities log4j --limit 5
+```
+
+`rss cve` retrieves a missing/expired record, or reuses a fresh cache entry.
+`--offline` never accesses the network; `--refresh` requests a fresh copy and
+cannot be combined with `--offline`. `rss vulnerabilities` searches archived
+articles and displays their mentioned CVEs and cached records without HTTP.
+Older articles are supported on read without rewriting the archive.
+
+In article details, **Vulnerabilidades CVE** shows one card per mentioned CVE.
+Click **Consultar CVE** to fetch a record or **Atualizar consulta** to request a
+refresh. Cards show descriptions, published/rejected state, CVSS scores and
+vectors with each CNA/ADP provider, CWEs, affected products, version ranges and
+conditional status changes, references, and the time of the last successful
+lookup. Missing CVSS is shown as unknown. A rejected CVE does not display active
+vulnerability details. A mention or affected-product range does not establish
+that the article or the user's machine is affected, or that exploitation occurred.
+CVE Program records may lack CVSS/product/CWE data; this feature does not add
+NVD, CISA KEV or EPSS data, or classify the user's installed software.
+
+The shared SQLite cache is `cve-cache.sqlite3` next to the article archive
+(`data/cve-cache.sqlite3` by default, or next to a legacy JSON cache). Published
+and rejected records expire after 24 hours; a public 404 is cached for one hour
+and means **not found**, rather than proof that the identifier is invalid.
+Expired records remain visible and are marked stale. Failed refreshes preserve
+prior records and back off for five minutes; HTTP 429 respects a bounded
+`Retry-After` delay and pauses other outbound lookups. A SQLite reservation limits
+outbound calls across CLI/API processes to one every 6.1 seconds, with duplicate
+in-flight requests coalesced. Reads of fresh/offline data do not consume that
+budget. The client uses a fixed HTTPS provider, timeouts, a 2 MiB response limit,
+validated IDs and no redirects. Feed-provided reference URLs are displayed,
+not fetched. Provider/cache failures do not prevent reading articles or collecting feeds.
+
+API operations are `GET /vulnerabilities/{cve_id}` (cache only) and
+`POST /vulnerabilities/{cve_id}` with JSON `{"refresh": false}` (explicit lookup).
+POST requires `X-Cyber-RSS-Request: 1`, the existing same-origin action checks,
+request budgets and optional authentication. Results include `status`, `record`,
+`checked_at`, `stale` and `retry_after`; provider failures/rate limits use these
+status fields without presenting missing data as a clean bill of health.
+`GET /articles/detail` includes `vulnerabilities` from the cache and never makes
+an external request.
+
+The cache is runtime data and is excluded from Git. Existing article backups
+preserve the CVE references, but do not include this separate, rebuildable cache.
+The cache is persisted by the existing Docker runtime volume; no additional
+service, credentials or dependency is required. Restart API/worker processes
+(or rebuild Docker images) after upgrading to register the new feature.
 
 ### ATT&CK techniques, campaigns and relationships
 
@@ -984,6 +1047,7 @@ articles, metadata and per-feed collection state.
 | Path | Purpose | Versioned |
 |---|---|---|
 | `data/articles.sqlite3` | SQLite archive and refresh metadata | No |
+| `data/cve-cache.sqlite3` | Shared CVE lookup cache and outbound budget | No |
 | `data/backups/` | Verified backup files and manifests | No |
 | `cache/articles.json` | Legacy cache, preserved for migration | No |
 | `logs/` | Runtime logs | No, except `.gitkeep` |
@@ -1081,9 +1145,11 @@ boundaries, contextual malware matching and malformed-catalog handling.
 Implemented: versioned ATT&CK technique/subtechnique, campaign and relationship
 mapping, available through article details and `rss attack`.
 
+Implemented: explicit CVE lookup, offline CVE reference enrichment, persistent
+cache and vulnerability details in the CLI and web interface.
+
 Potential next stages:
 
-- add CVE lookup and vulnerability enrichment
 - support PostgreSQL repositories
 - add configurable retention and future schema migrations
 - add full-article retrieval and summarization

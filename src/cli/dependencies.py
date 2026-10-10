@@ -6,6 +6,7 @@ from services.article_service import ArticleService
 from services.search_service import SearchService
 from services.topic_service import TopicService
 from services.attack_service import AttackService
+from services.vulnerability_service import VulnerabilityService
 
 
 @dataclass(slots=True)
@@ -23,3 +24,4 @@ class CLIServices:
 
     topic_service: TopicService
     attack_service: AttackService | None = None
+    vulnerability_service: VulnerabilityService | None = None

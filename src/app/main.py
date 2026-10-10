@@ -21,6 +21,7 @@ def main() -> None:
         search_service=container.search_service,
         topic_service=container.topic_service,
         attack_service=container.attack_service,
+        vulnerability_service=container.vulnerability_service,
     )
 
     app = create_cli(services)

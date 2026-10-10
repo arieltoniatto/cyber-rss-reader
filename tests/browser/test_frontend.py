@@ -533,3 +533,39 @@ def test_attack_mapping_distinguishes_article_references_from_catalog_context(pa
     page.wait_for_timeout(300)
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert page.locator('#article-dialog').evaluate('(dialog) => dialog.scrollWidth <= dialog.clientWidth')
+
+
+def test_vulnerability_lookup_context_cache_and_mobile_layout(page):
+    import json
+    page.locator('.article-title').filter(has_text='Malware report 24').click()
+    section = page.locator('.vulnerability-details')
+    expect(section).to_be_visible()
+    expect(section).to_contain_text('CVE-2026-1234')
+    expect(section).to_contain_text('Ainda não consultado')
+    requests = []
+    def respond(route):
+        requests.append(route.request)
+        assert route.request.method == 'POST'
+        assert route.request.headers['x-cyber-rss-request'] == '1'
+        route.fulfill(json={'cve_id': 'CVE-2026-1234', 'status': 'ok', 'cached': True, 'stale': False,
+                            'checked_at': '2026-10-10T12:00:00Z', 'retry_after': 0,
+                            'source_url': 'https://www.cve.org/CVERecord?id=CVE-2026-1234',
+                            'record': {'state': 'PUBLISHED', 'title': '<img src=x onerror="window.__cve_xss=1">',
+                                       'description': 'Official vulnerability description.', 'cvss': [], 'cwes': ['CWE-79'],
+                                       'affected': [{'vendor': 'Vendor', 'product': 'Product', 'default_status': 'unaffected',
+                                                     'versions': [{'version': '1.0', 'lessThan': '2.0', 'status': 'affected'}]}],
+                                       'references': ['https://example.com/fix', 'javascript:window.__cve_xss=1']}})
+    page.route('**/vulnerabilities/CVE-2026-1234', respond)
+    section.get_by_role('button', name='Consultar CVE').click()
+    expect(section).to_contain_text('Official vulnerability description.')
+    expect(section).to_contain_text('CVSS não informado')
+    expect(section.locator('img')).to_have_count(0)
+    assert page.evaluate('window.__cve_xss') is None
+    section.get_by_text('Produtos, versões e referências').click()
+    expect(section).to_contain_text('2.0')
+    expect(section.locator('.vulnerability-references a')).to_have_count(1)
+    assert len(requests) == 1
+    page.set_viewport_size({'width': 390, 'height': 844})
+    section.scroll_into_view_if_needed()
+    assert page.locator('#article-dialog').evaluate('(e) => e.scrollWidth <= e.clientWidth')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

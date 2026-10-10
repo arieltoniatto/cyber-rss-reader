@@ -375,6 +375,51 @@
     }
     return section;
   }
+  function renderVulnerabilities(article) {
+    const section=element("section","detail-section vulnerability-details");section.append(element("h3","","Vulnerabilidades CVE"));
+    section.append(element("p","detail-notice","Os registros descrevem as vulnerabilidades mencionadas. Não confirmam que esta notícia ou seu computador sejam afetados."));
+    if(!article.vulnerabilities?.length) {section.append(element("p","detail-empty","Nenhum CVE mencionado neste artigo."));return section;}
+    function cardFor(result) {
+      const card=element("div","vulnerability-card"),header=element("div","vulnerability-heading");
+      const link=element("a","pill",result.cve_id);link.href=result.source_url;link.target="_blank";link.rel="noopener noreferrer";header.append(link);
+      const lookup=button(result.record || result.status==="not_found" ? "Atualizar consulta" : "Consultar CVE", "secondary-button", async()=>{
+        lookup.disabled=true;lookup.textContent="Consultando…";
+        try {
+          const response=await fetch("/vulnerabilities/"+encodeURIComponent(result.cve_id),{method:"POST",headers:{"Content-Type":"application/json","X-Cyber-RSS-Request":"1"},body:JSON.stringify({refresh:result.cached})});
+          if(!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data=await response.json();if(card.isConnected) card.replaceWith(cardFor(data));
+        } catch {notice.textContent="Não foi possível consultar. Tente novamente.";}
+        finally {lookup.disabled=false;lookup.textContent=result.cached ? "Atualizar consulta" : "Consultar CVE";}
+      });header.append(lookup);card.append(header);
+      const labels={not_looked_up:"Ainda não consultado. A consulta usa o serviço do CVE Program.",not_found:"Registro público não encontrado. Isso não confirma que o identificador seja inválido.",unavailable:"Consulta indisponível. Os dados anteriores, quando disponíveis, foram preservados.",rate_limited:"Aguarde antes da próxima consulta."};
+      const notice=element("p","detail-notice",(labels[result.status] || "")+(result.retry_after ? ` Tente novamente em ${result.retry_after} segundos.` : ""));
+      if(notice.textContent) card.append(notice);
+      if(result.checked_at) card.append(element("p","detail-notice",`CVE Program · consultado em ${formatDate(result.checked_at,true)}${result.stale ? " · cache desatualizado" : ""}`));
+      const record=result.record;
+      if(record) {
+        card.append(element("h4","",record.state==="REJECTED" ? "Identificador rejeitado" : record.title || "Registro publicado"));
+        card.append(element("p","vulnerability-description",record.description || "Descrição não informada."));
+        if(record.state!=="REJECTED") {
+          const scores=element("div","detail-chips");
+          record.cvss.forEach(score=>scores.append(element("span","pill",`CVSS ${score.version}: ${score.score} · ${score.severity} · ${score.source}`)));
+          if(!record.cvss.length) scores.append(element("p","detail-empty","CVSS não informado neste registro."));card.append(scores);
+          if(record.cwes.length) card.append(element("p","",record.cwes.join(" · ")));
+          if(record.affected.length || record.references.length || record.cvss.length) {
+            const detail=element("details","vulnerability-extra");detail.append(element("summary","","Produtos, versões e referências"));
+            record.cvss.forEach(score=>detail.append(element("p","vulnerability-vector",`CVSS ${score.version} (${score.source}): ${score.vector}`)));
+            record.affected.forEach(product=>{
+              const row=element("div","vulnerability-product");row.append(element("h4","",[product.vendor,product.product].filter(Boolean).join(" · ") || "Produto não informado"));
+              if(product.default_status) row.append(element("p","",`Status padrão: ${product.default_status}`));
+              product.versions.forEach(version=>row.append(element("pre","vulnerability-version",JSON.stringify(version,null,2))));detail.append(row);
+            });
+            const refs=element("div","vulnerability-references");record.references.forEach(value=>{const href=safeArticleURL(value);if(href){const a=element("a","",value);a.href=href;a.target="_blank";a.rel="noopener noreferrer";refs.append(a);}});detail.append(refs);card.append(detail);
+          }
+        }
+      }
+      return card;
+    }
+    article.vulnerabilities.forEach(result=>section.append(cardFor(result)));return section;
+  }
   function renderDetail(article) {
     const content=$("detail-content"); const title=element("h2","",article.title);title.id="detail-title";
     content.replaceChildren(element("span","pill category-pill",categoryName(article.category || "Sem categoria")),title,element("p","detail-meta",`${article.source} · ${formatDate(article.published,true)}${article.author ? " · " + article.author : ""}`),element("p","detail-summary",article.summary || "Resumo não disponível neste feed."));
@@ -382,7 +427,7 @@
     const iocs=element("section","detail-section");iocs.append(element("h3","","Indicadores de compromisso"));
     if(!article.iocs.length) iocs.append(element("p","detail-empty","Nenhum IOC extraído deste artigo."));
     else {const list=element("div","ioc-list");article.iocs.forEach(ioc=>{const row=element("div","ioc-row");const copy=button("Copiar","ioc-copy",async()=>{try{await navigator.clipboard.writeText(ioc.value);copy.textContent="Copiado";}catch{copy.textContent="Selecione o texto";}});copy.setAttribute("aria-label",`Copiar ${ioc.type}: ${ioc.value}`);row.append(element("span","ioc-type",ioc.type),element("code","ioc-value",ioc.value),copy);list.append(row);});iocs.append(list);}
-    content.append(renderAttack(article));
+    content.append(renderAttack(article),renderVulnerabilities(article));
     content.append(iocs,element("p","detail-notice","Os indicadores e nomes são extraídos do texto do feed. Valide o contexto antes de usá-los em uma investigação."));
     const actions=element("div","detail-actions"),url=safeArticleURL(article.url);
     if(url) {const link=element("a","primary-button","Abrir artigo original ↗");link.href=url;link.target="_blank";link.rel="noopener noreferrer";actions.append(link);}

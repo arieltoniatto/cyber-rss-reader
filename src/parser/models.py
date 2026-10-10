@@ -59,3 +59,4 @@ class Article:
     threat_actors: list[str] = field(default_factory=list)
 
     attack: AttackMapping | None = None
+    cve_ids: list[str] = field(default_factory=list)
