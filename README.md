@@ -100,18 +100,49 @@ The IOC enricher currently supports:
 - CVE identifiers
 - autonomous system numbers
 
+Validation runs on both extracted IOCs and pre-existing IOCs passed through
+this enricher. It checks IP syntax, DNS label/length rules, email structure,
+hash length/hex characters, CVE format and the 32-bit ASN range (1–4294967295).
+URLs require HTTP/HTTPS, a valid domain or IP host and a valid port. Scheme and
+host are normalized while path/query case remains distinct during deduplication.
+Common defanged forms (`hxxp`, `hxxps`, `[.]`, `(.)`, `[@]`) are normalized locally.
+No URL is fetched or opened during enrichment.
+
+To reduce false positives, network hosts are extracted from validated URLs;
+URL paths and email local parts do not generate standalone domains/IPs.
+The extractor rejects partial tokens, known file suffixes in bare-domain
+candidates, and IPv4-like numbers explicitly introduced as versions/builds.
+URL hosts still support domains such as `evil.zip`. IPv4 embedded in an IPv6
+address does not become a separate IPv4 IOC. Private IPs are retained.
+These are syntactically valid observables, not a verdict that a host is malicious
+or a CVE exists; no DNS, reputation or vulnerability lookup is performed.
+
 #### Malware detection
 
 `MalwareEnricher` detects canonical malware names and known aliases in article titles, summaries, and tags. Detected names are stored in the dedicated `Article.malware` field rather than mixed with generic tags.
 
 The malware catalog is generated from active, non-deprecated MITRE ATT&CK Enterprise STIX 2.1 `malware` objects. The matcher:
 
-- uses token boundaries to reduce substring false positives
+- uses token boundaries and avoids joining aliases across title/summary/tag boundaries
 - deduplicates canonical names case-insensitively
-- ignores generic aliases such as `malware`, `trojan`, and `ransomware`
+- ignores generic names/aliases such as `malware`, `trojan`, `ransomware`, `wiper`, `PS1` and `ZLib`
 - skips aliases assigned to more than one malware entry
-- preserves malware names already present on an article
-- becomes a safe no-op when the catalog is missing or invalid
+- preserves valid existing malware names; malformed non-string values are discarded
+- ignores names found only in URLs/email addresses, including defanged URLs
+- requires nearby security context for a curated list of common words and personal/place names, such as `Milan`, `Page`, `Chaos` and `Empire`
+- validates catalog structure/schema and string fields, excluding revoked/deprecated entries
+- becomes a safe no-op when the catalog is missing, unreadable or invalid
+
+Common-word context is checked within 100 characters on either side, in the
+same sentence and article field, for terms such as `malware`, `ransomware`,
+`backdoor` or `payload`. Distinctive aliases remain detectable without this
+context. This conservative heuristic can miss terse mentions of ambiguous
+names; the curated list is not a complete natural-language classifier.
+
+The updated rules apply when articles pass through enrichment, including future
+collections. The archive is not bulk reprocessed. Restart the API and periodic
+worker after upgrading (or rebuild/recreate the Docker services) to activate
+the rules in running processes.
 
 #### Threat actor detection
 
@@ -976,9 +1007,11 @@ a control resets pagination; **Limpar filtros** restores all defaults.
 Implemented: `--ioc`, `--ioc-type` and `--threat-actor` filters for
 `rss search` and `rss latest`, using extracted article metadata.
 
+Implemented: type-specific IOC validation and normalization, stricter token
+boundaries, contextual malware matching and malformed-catalog handling.
+
 Potential next stages:
 
-- improve IOC and malware validation and false-positive handling
 - add ATT&CK technique, campaign, and relationship mapping
 - add CVE lookup and vulnerability enrichment
 - support PostgreSQL repositories

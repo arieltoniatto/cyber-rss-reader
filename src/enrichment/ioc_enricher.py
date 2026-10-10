@@ -4,66 +4,67 @@ import ipaddress
 import re
 from collections.abc import Iterable
 from dataclasses import replace
+from urllib.parse import urlsplit, urlunsplit
+
+from enrichment.text import refang, mask_references
 
 from parser.models import Article, IOC, IOCType
 
 
 _URL_PATTERN = re.compile(
-    r"https?://[^\s<>'\"]+",
+    r"(?<![\w])https?://[^\s<>'\"]+",
     flags=re.IGNORECASE,
 )
 
 _EMAIL_PATTERN = re.compile(
-    r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}\b",
+    r"(?<![\w.@%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}(?![\w-]|\.[\w.-])",
     flags=re.IGNORECASE,
 )
 
 _IPV4_PATTERN = re.compile(
-    r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
+    r"(?<![\w.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![\w]|\.[\w.])"
 )
 
 _IPV6_PATTERN = re.compile(
-    r"(?<![0-9A-Fa-f:])"
+    r"(?<![\w:])"
     r"(?:[0-9A-Fa-f]{0,4}:){2,7}"
-    r"[0-9A-Fa-f]{0,4}"
-    r"(?![0-9A-Fa-f:])"
+    r"[0-9A-Fa-f:.]*"
+    r"(?![\w:])"
 )
 
 _DOMAIN_PATTERN = re.compile(
-    r"\b"
+    r"(?<![\w.-])"
     r"(?:"
     r"[A-Z0-9]"
     r"(?:[A-Z0-9-]{0,61}[A-Z0-9])?"
     r"\."
     r")+"
     r"[A-Z]{2,63}"
-    r"\b",
+    r"(?![\w-]|\.[\w.-])",
     flags=re.IGNORECASE,
 )
 
 _SHA256_PATTERN = re.compile(
-    r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{64}(?![A-Fa-f0-9])"
+    r"(?<![\w])[A-Fa-f0-9]{64}(?![\w])"
 )
 
 _SHA1_PATTERN = re.compile(
-    r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{40}(?![A-Fa-f0-9])"
+    r"(?<![\w])[A-Fa-f0-9]{40}(?![\w])"
 )
 
 _MD5_PATTERN = re.compile(
-    r"(?<![A-Fa-f0-9])[A-Fa-f0-9]{32}(?![A-Fa-f0-9])"
+    r"(?<![\w])[A-Fa-f0-9]{32}(?![\w])"
 )
 
 _CVE_PATTERN = re.compile(
-    r"\bCVE-\d{4}-\d{4,7}\b",
+    r"(?<![\w-])CVE-[0-9]{4}-[0-9]{4,}(?![\w-])",
     flags=re.IGNORECASE,
 )
 
 _ASN_PATTERN = re.compile(
-    r"\bAS\d{1,10}\b",
+    r"(?<![\w-])AS[0-9]{1,10}(?![\w-])",
     flags=re.IGNORECASE,
 )
-
-_TRAILING_URL_CHARACTERS = ".,;:!?)]}>\"'"
 
 _NON_DOMAIN_SUFFIXES = {
     "css",
@@ -113,14 +114,31 @@ class IOCEnricher:
         """
         Return a new Article containing extracted IOCs.
         """
-        content = self._build_searchable_content(article)
+        content = refang(self._build_searchable_content(article))
+        # Domains/IPs in paths and email local parts are not network hosts.
+        network_text = mask_references(content)
+        ipv6_text = _IPV6_PATTERN.sub(lambda match: " " * len(match.group()), network_text)
+        urls = self._extract_urls(content)
+        hosts: list[IOC] = []
+        for url in urls:
+            normalized = self._normalize(url)
+            if normalized is None:
+                continue
+            host = urlsplit(normalized.value).hostname
+            try:
+                address = ipaddress.ip_address(host)
+                kind = IOCType.IPV4 if address.version == 4 else IOCType.IPV6
+            except ValueError:
+                kind = IOCType.DOMAIN
+            hosts.append(IOC(kind, host))
 
         extracted_iocs = [
-            *self._extract_urls(content),
+            *urls,
+            *hosts,
             *self._extract_emails(content),
-            *self._extract_ipv4_addresses(content),
-            *self._extract_ipv6_addresses(content),
-            *self._extract_domains(content),
+            *self._extract_ipv4_addresses(ipv6_text),
+            *self._extract_ipv6_addresses(network_text),
+            *self._extract_domains(network_text),
             *self._extract_sha256_hashes(content),
             *self._extract_sha1_hashes(content),
             *self._extract_md5_hashes(content),
@@ -158,9 +176,7 @@ class IOCEnricher:
         iocs: list[IOC] = []
 
         for match in _URL_PATTERN.finditer(content):
-            value = match.group(0).rstrip(
-                _TRAILING_URL_CHARACTERS
-            )
+            value = _trim_url(match.group(0))
 
             if value:
                 iocs.append(
@@ -190,6 +206,9 @@ class IOCEnricher:
 
         for match in _IPV4_PATTERN.finditer(content):
             candidate = match.group(0)
+            if re.search(r"\b(?:version|ver\.?|release|build)\s*[:=]?\s*$",
+                         content[max(0, match.start() - 30):match.start()], re.IGNORECASE):
+                continue
 
             try:
                 address = ipaddress.IPv4Address(candidate)
@@ -212,7 +231,7 @@ class IOCEnricher:
         iocs: list[IOC] = []
 
         for match in _IPV6_PATTERN.finditer(content):
-            candidate = match.group(0)
+            candidate = match.group(0).rstrip(".")
 
             try:
                 address = ipaddress.IPv6Address(candidate)
@@ -319,7 +338,7 @@ class IOCEnricher:
 
             key = (
                 normalized_ioc.type,
-                normalized_ioc.value.casefold(),
+                normalized_ioc.value if normalized_ioc.type == IOCType.URL else normalized_ioc.value.casefold(),
             )
 
             if key in seen:
@@ -332,46 +351,88 @@ class IOCEnricher:
 
     @staticmethod
     def _normalize(ioc: IOC) -> IOC | None:
-        value = ioc.value.strip()
-
-        if not value:
+        if not isinstance(ioc, IOC) or not isinstance(ioc.value, str):
             return None
-
         try:
-            if ioc.type is IOCType.IPV4:
-                value = str(
-                    ipaddress.IPv4Address(value)
-                )
-
-            elif ioc.type is IOCType.IPV6:
-                value = str(
-                    ipaddress.IPv6Address(value)
-                )
-
-            elif ioc.type in {
-                IOCType.DOMAIN,
-                IOCType.EMAIL,
-                IOCType.MD5,
-                IOCType.SHA1,
-                IOCType.SHA256,
-            }:
+            kind = IOCType(ioc.type)
+            value = refang(ioc.value.strip())
+            if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+                return None
+            if kind == IOCType.IPV4:
+                value = str(ipaddress.IPv4Address(value))
+            elif kind == IOCType.IPV6:
+                value = str(ipaddress.IPv6Address(value))
+            elif kind == IOCType.DOMAIN:
+                value = _domain(value)
+                if value is None:
+                    return None
+            elif kind == IOCType.EMAIL:
+                if not _EMAIL_PATTERN.fullmatch(value) or len(value) > 254:
+                    return None
+                local, host = value.rsplit("@", 1)
+                host = _domain(host)
+                if not host or len(local) > 64 or local.startswith(".") or local.endswith(".") or ".." in local:
+                    return None
+                value = local.lower() + "@" + host
+            elif kind in (IOCType.MD5, IOCType.SHA1, IOCType.SHA256):
+                length = {IOCType.MD5: 32, IOCType.SHA1: 40, IOCType.SHA256: 64}[kind]
+                if not re.fullmatch(r"[a-fA-F0-9]{" + str(length) + "}", value):
+                    return None
                 value = value.lower()
-
-            elif ioc.type in {
-                IOCType.CVE,
-                IOCType.ASN,
-            }:
+            elif kind == IOCType.CVE:
+                if not _CVE_PATTERN.fullmatch(value):
+                    return None
                 value = value.upper()
-
-            elif ioc.type is IOCType.URL:
-                value = value.rstrip(
-                    _TRAILING_URL_CHARACTERS
-                )
-
-        except ipaddress.AddressValueError:
+            elif kind == IOCType.ASN:
+                if not _ASN_PATTERN.fullmatch(value) or not 1 <= int(value[2:]) <= 4294967295:
+                    return None
+                value = "AS" + str(int(value[2:]))
+            elif kind == IOCType.URL:
+                parts = urlsplit(value)
+                if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+                    return None
+                if any(char.isspace() for char in value) or "\\" in value:
+                    return None
+                if parts.port is not None and not 1 <= parts.port <= 65535:
+                    return None
+                host = parts.hostname
+                try:
+                    address = ipaddress.ip_address(host)
+                    host = "[" + str(address) + "]" if address.version == 6 else str(address)
+                except ValueError:
+                    host = _domain(host)
+                    if host is None:
+                        return None
+                # Normalize scheme/host, preserving credentials, path, query and fragment case.
+                credentials = parts.netloc.rsplit("@", 1)[0] + "@" if "@" in parts.netloc else ""
+                port = ":" + str(parts.port) if parts.port is not None else ""
+                value = urlunsplit((parts.scheme.lower(), credentials + host + port,
+                                   parts.path, parts.query, parts.fragment))
+        except (ValueError, TypeError, UnicodeError):
             return None
+        return IOC(type=kind, value=value)
 
-        return IOC(
-            type=ioc.type,
-            value=value,
-        )
+
+def _domain(value: str) -> str | None:
+    if value.endswith(".."):
+        return None
+    try:
+        value = value.removesuffix(".").encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    if len(value) > 253 or "." not in value:
+        return None
+    labels = value.split(".")
+    if any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in labels):
+        return None
+    if not re.fullmatch(r"[a-z]{2,63}|xn--[a-z0-9-]+", labels[-1]):
+        return None
+    return value
+
+
+def _trim_url(value: str) -> str:
+    value = value.rstrip(".,;:!?}>\"'")
+    for opening, closing in (("(", ")"), ("[", "]")):
+        while value.endswith(closing) and value.count(closing) > value.count(opening):
+            value = value[:-1]
+    return value

@@ -139,3 +139,44 @@ async def test_pipeline_enriches_multiple_articles(
     assert len(results) == 2
     assert results[0].tags == ["first"]
     assert results[1].tags == ["first"]
+
+@pytest.mark.asyncio
+async def test_collection_persists_validated_iocs_and_contextual_malware(tmp_path):
+    import json
+    import feedparser
+    from unittest.mock import AsyncMock
+
+    from config.models import Feed
+    from feeds.models import FeedResult
+    from enrichment.ioc_enricher import IOCEnricher
+    from enrichment.malware_enricher import MalwareEnricher
+    from parser.models import IOC, IOCType
+    from parser.parser import RSSParser
+    from services.article_service import ArticleService
+    from storage.sqlite_storage import SQLiteArticleRepository
+
+    catalog = tmp_path / 'malware.json'
+    catalog.write_text(json.dumps({'malware': [{'name': 'BlackEnergy'}, {'name': 'Milan'}]}))
+    xml = b'''<rss version="2.0"><channel><title>Reports</title>
+      <item><title>BlackEnergy activity</title><link>https://publisher.test/positive</link>
+      <description>Payload from hxxps://EVIL[.]test/Case. CVE-2026-1234 AS4294967296 999.1.2.3</description></item>
+      <item><title>Meeting in Milan</title><link>https://publisher.test/negative</link>
+      <description>Page with links: https://blackenergy.test/tools/sample.exe/path.fake</description></item>
+    </channel></rss>'''
+    fetcher = AsyncMock()
+    fetcher.fetch_all.return_value = [FeedResult(feed=Feed(name='Source', url='https://publisher.test/rss'),
+                                                parsed=feedparser.parse(xml))]
+    repo = SQLiteArticleRepository(tmp_path / 'archive.sqlite3')
+    pipeline = EnrichmentPipeline([IOCEnricher(), MalwareEnricher(catalog)], continue_on_error=False)
+    service = ArticleService(repository=repo, fetcher=fetcher, parser=RSSParser(), enrichment_pipeline=pipeline)
+    result = await service.update(force_refresh=True)
+    assert result.articles_saved == 2
+    saved = {a.title: a for a in repo.load()}
+    positive = saved['BlackEnergy activity']
+    assert positive.malware == ['BlackEnergy']
+    assert IOC(IOCType.URL, 'https://evil.test/Case') in positive.iocs
+    assert IOC(IOCType.CVE, 'CVE-2026-1234') in positive.iocs
+    assert not any(ioc.type in (IOCType.ASN, IOCType.IPV4) for ioc in positive.iocs)
+    negative = saved['Meeting in Milan']
+    assert negative.malware == []
+    assert {ioc.value for ioc in negative.iocs if ioc.type == IOCType.DOMAIN} == {'blackenergy.test'}
