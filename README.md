@@ -400,6 +400,35 @@ search. The fuzzy threshold is ignored in exact mode. Undated articles are
 excluded from date-filtered searches; with the full archive they appear last
 for newest ordering and first for oldest ordering.
 
+### Filter extracted IOCs and threat actors
+
+Both `rss search` and `rss latest` support `--ioc`, `--ioc-type` and
+`--threat-actor`, together with category, source, tag and result limits:
+
+```bash
+rss latest --ioc-type cve --limit 10
+rss latest --threat-actor APT28 --ioc-type ipv4
+rss search ransomware --ioc CVE-2026-1234 --ioc-type cve
+rss search campaign --threat-actor APT28 --tag research --limit 10
+```
+
+`--ioc` matches the complete extracted value. `--ioc-type` selects articles
+containing an IOC of that type; if both are supplied, the same IOC must match
+value and type. Types are `ipv4`, `ipv6`, `domain`, `url`, `email`, `md5`, `sha1`,
+`sha256`, `cve`, and `asn`. IOC values are case-insensitive except URLs, which
+use the stored spelling exactly, including path and query case. Whitespace
+around CLI filter values is trimmed; blank values and unknown types are rejected.
+
+`--threat-actor` matches a complete stored actor name without case sensitivity.
+Aliases are not resolved at query time; use the canonical name shown in the
+article's details. IOC and actor filters use the enriched metadata, not text
+mentions, and remain exact even with fuzzy text search. Combined filters use
+AND and apply before pagination. Unknown values return no results.
+
+Search already loads the archive in memory; `latest` does so when IOC or actor
+filters are supplied. The default SQLite `latest` path keeps SQL pagination.
+These filters do not change the archive, fetch feeds or rerun enrichment.
+
 ### Extract topics
 
 Show the most relevant topics from cached articles:
@@ -944,9 +973,11 @@ CLI, API and web interface. The web interface offers 10/20/50/100 results per
 page and preserves controls in the URL, reloads and browser history. Changing
 a control resets pagination; **Limpar filtros** restores all defaults.
 
+Implemented: `--ioc`, `--ioc-type` and `--threat-actor` filters for
+`rss search` and `rss latest`, using extracted article metadata.
+
 Potential next stages:
 
-- add IOC and threat actor CLI filters
 - improve IOC and malware validation and false-positive handling
 - add ATT&CK technique, campaign, and relationship mapping
 - add CVE lookup and vulnerability enrichment

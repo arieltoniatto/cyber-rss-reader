@@ -14,6 +14,8 @@ from parser.parser import RSSParser
 from storage.interfaces import ArticleRepository
 from services.exceptions import InvalidCategoryError, InvalidSourceError
 from services.models import LatestQuery, UpdateResult
+from search.filters import apply_filters
+from search.models import SearchFilters
 from enrichment.pipeline import EnrichmentPipeline
 
 
@@ -193,6 +195,12 @@ class ArticleService:
         self,
         query: LatestQuery,
     ) -> list[Article]:
+
+        if query.ioc is not None or query.ioc_type is not None or query.threat_actor is not None:
+            filters = SearchFilters(category=query.category, source=query.source, tag=query.tag,
+                                    ioc=query.ioc, ioc_type=query.ioc_type, threat_actor=query.threat_actor,
+                                    newest=True, limit=query.limit, offset=query.offset)
+            return apply_filters(self._repository.load(), filters)
 
         return self._repository.latest(
             category=query.category, source=query.source, tag=query.tag,

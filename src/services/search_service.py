@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parser.models import Article
+from parser.models import Article, IOCType
 from search.engine import SearchEngine
 from search.models import SearchFilters, SearchMatch
 from search.query import SearchQuery
@@ -46,6 +46,9 @@ class SearchService:
         fuzzy_threshold: int = 80,
         offset: int = 0,
         match_mode: SearchMatch = SearchMatch.fuzzy,
+        ioc: str | None = None,
+        ioc_type: IOCType | None = None,
+        threat_actor: str | None = None,
     ) -> list[Article]:
         """
         Search cached articles.
@@ -74,6 +77,7 @@ class SearchService:
 
         filters = SearchFilters(
             tag=tag,
+            ioc=ioc, ioc_type=ioc_type, threat_actor=threat_actor,
             today=today,
             last_week=last_week,
             category=category,

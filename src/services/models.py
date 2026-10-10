@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from parser.models import IOCType
 
 
 @dataclass(slots=True, frozen=True)
@@ -23,3 +24,6 @@ class LatestQuery:
     tag: str | None = None
     limit: int = 20
     offset: int = 0
+    ioc: str | None = None
+    ioc_type: IOCType | None = None
+    threat_actor: str | None = None

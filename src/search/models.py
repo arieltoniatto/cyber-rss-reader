@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from parser.models import IOCType
+
 
 class SearchOrder(str, Enum):
     newest = "newest"
@@ -43,10 +45,21 @@ class SearchFilters:
     offset: int = 0
     match_mode: SearchMatch = SearchMatch.fuzzy
 
+    ioc: str | None = None
+    ioc_type: IOCType | None = None
+    threat_actor: str | None = None
+
     def __post_init__(self):
         self.validate()
 
     def validate(self):
+        for name in ("ioc", "threat_actor"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string")
+        if self.ioc_type is not None:
+            IOCType(self.ioc_type)
+
         if self.limit is not None and (type(self.limit) is not int or self.limit < 1):
             raise ValueError("limit must be a positive integer")
         if type(self.offset) is not int or self.offset < 0:

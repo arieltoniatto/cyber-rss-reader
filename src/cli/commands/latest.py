@@ -1,6 +1,8 @@
 import asyncio
 from datetime import datetime
 import typer
+from parser.models import IOCType
+from cli.entity_filters import nonempty_filter
 
 from cli.formatter import article_table
 
@@ -30,6 +32,12 @@ def register(app, services):
             "-t",
             help="Filter articles by tag.",
         ),
+        ioc: str | None = typer.Option(None, "--ioc", callback=nonempty_filter,
+                                       help="Exact extracted IOC value; URLs are case-sensitive."),
+        ioc_type: IOCType | None = typer.Option(None, "--ioc-type",
+                                              help="Extracted IOC type (value and type must match the same IOC)."),
+        threat_actor: str | None = typer.Option(None, "--threat-actor", callback=nonempty_filter,
+                                                help="Exact stored actor name, case-insensitive."),
         limit: int = typer.Option(
             20,
             "--limit",
@@ -42,6 +50,7 @@ def register(app, services):
             category=category,
             source=source,
             tag=tag,
+            ioc=ioc, ioc_type=ioc_type, threat_actor=threat_actor,
             limit=limit,
         )
 
