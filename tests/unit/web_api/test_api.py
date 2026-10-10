@@ -86,3 +86,33 @@ def test_frontend_filters_detail_and_tagged_search(tmp_path):
         assert detail['malware'] == ['BlackEnergy']
         assert detail['iocs'][0]['type'] == 'cve'
         assert client.get('/articles/detail', params={'id': 'missing'}).status_code == 404
+
+
+def test_result_controls_filter_then_sort_then_paginate(tmp_path):
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    repo = SQLiteArticleRepository(tmp_path / 'archive.sqlite3')
+    repo.save([Article(title=f'Ransomware report {i}', source='Source', category='news',
+                       summary='', url=f'https://example.com/{i}', tags=['research'],
+                       published=now - timedelta(days=i)) for i in range(10)])
+    with TestClient(create_app(repo)) as client:
+        for endpoint in ('/articles', '/search'):
+            params = {'q': 'ransomware', 'order': 'oldest', 'period': 'week',
+                      'tag': 'research', 'limit': 2, 'match': 'exact'}
+            first = client.get(endpoint, params=params).json()
+            assert [a['title'] for a in first['items']] == ['Ransomware report 6', 'Ransomware report 5']
+            assert first['has_more']
+            second = client.get(endpoint, params={**params, 'offset': 2}).json()
+            assert [a['title'] for a in second['items']] == ['Ransomware report 4', 'Ransomware report 3']
+            final = client.get(endpoint, params={**params, 'offset': 6}).json()
+            assert [a['title'] for a in final['items']] == ['Ransomware report 0']
+            assert not final['has_more']
+            assert len(client.get(endpoint, params={**params, 'period': 'today'}).json()['items']) == 1
+            for bad in ({'limit': 0}, {'limit': 101}, {'offset': -1}, {'order': 'unknown'}, {'period': 'unknown'}):
+                assert client.get(endpoint, params={**params, **bad}).status_code == 422
+        assert client.get('/search', params={'q': 'ransmware', 'fuzzy_threshold': 70}).json()['items']
+        assert not client.get('/search', params={'q': 'ransmware', 'match': 'exact'}).json()['items']
+        assert not client.get('/search', params={'q': 'ransmware', 'fuzzy_threshold': 100}).json()['items']
+        for bad in ({'match': 'unknown'}, {'fuzzy_threshold': -1}, {'fuzzy_threshold': 101}, {'offset': 10001}):
+            assert client.get('/search', params={'q': 'malware', **bad}).status_code == 422

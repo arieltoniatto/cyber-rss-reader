@@ -25,6 +25,7 @@ from starlette.concurrency import run_in_threadpool
 
 from config.paths import ARTICLE_DATABASE_FILE
 from search.engine import SearchEngine
+from search.models import SearchOrder, SearchPeriod, SearchMatch
 from services.search_service import SearchService
 from storage.interfaces import ArticleRepository
 from storage.sqlite_storage import SQLiteArticleRepository
@@ -201,9 +202,18 @@ def create_app(repository: ArticleRepository | None = None, *,
                  source: str | None = Query(None, max_length=200),
                  tag: str | None = Query(None, max_length=200),
                  limit: int = Query(20, ge=1, le=100),
-                 offset: int = Query(0, ge=0)):
-        rows = app.state.repository.latest(category=category, source=source, tag=tag,
-                                           limit=limit + 1, offset=offset)
+                 offset: int = Query(0, ge=0),
+                 order: SearchOrder = SearchOrder.newest,
+                 period: SearchPeriod = SearchPeriod.all):
+        if order == SearchOrder.newest and period == SearchPeriod.all:
+            rows = app.state.repository.latest(category=category, source=source, tag=tag,
+                                               limit=limit + 1, offset=offset)
+        else:
+            service = SearchService(repository=app.state.repository, engine=SearchEngine())
+            rows = service.search(category=category, source=source, tag=tag,
+                                  limit=limit + 1, offset=offset,
+                                  newest=order == SearchOrder.newest, oldest=order == SearchOrder.oldest,
+                                  today=period == SearchPeriod.today, last_week=period == SearchPeriod.week)
         return {"items": [serialize(a) for a in rows[:limit]],
                 "limit": limit, "offset": offset, "has_more": len(rows) > limit}
 
@@ -225,12 +235,19 @@ def create_app(repository: ArticleRepository | None = None, *,
                source: str | None = Query(None, max_length=200),
                tag: str | None = Query(None, max_length=200),
                limit: int = Query(20, ge=1, le=100),
-               offset: int = Query(0, ge=0, le=10000)):
+               offset: int = Query(0, ge=0, le=10000),
+               order: SearchOrder = SearchOrder.newest,
+               period: SearchPeriod = SearchPeriod.all,
+               match: SearchMatch = SearchMatch.fuzzy,
+               fuzzy_threshold: int = Query(80, ge=0, le=100)):
         service = SearchService(repository=app.state.repository, engine=SearchEngine())
         rows = service.search(keyword=q, category=category, source=source, tag=tag,
-                              limit=offset + limit + 1)
-        return {"items": [serialize(a) for a in rows[offset:offset + limit]],
-                "limit": limit, "offset": offset, "has_more": len(rows) > offset + limit}
+                              limit=limit + 1, offset=offset,
+                              newest=order == SearchOrder.newest, oldest=order == SearchOrder.oldest,
+                              today=period == SearchPeriod.today, last_week=period == SearchPeriod.week,
+                              match_mode=match, fuzzy_threshold=fuzzy_threshold)
+        return {"items": [serialize(a) for a in rows[:limit]],
+                "limit": limit, "offset": offset, "has_more": len(rows) > limit}
 
     @app.get("/topics")
     def topics(limit: int = Query(20, ge=1, le=100)):

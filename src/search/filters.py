@@ -13,6 +13,7 @@ def apply_filters(
     filters: SearchFilters,
 ) -> list[Article]:
 
+    filters.validate()
     result = articles
 
     now = datetime.now(timezone.utc)
@@ -34,7 +35,7 @@ def apply_filters(
             article
             for article in result
             if article.published
-            and normalize_datetime(article.published) >= cutoff
+            and cutoff <= normalize_datetime(article.published) <= now
         ]
 
     if filters.category:
@@ -63,6 +64,9 @@ def apply_filters(
 
     if filters.limit is not None:
 
-        result = result[: filters.limit]
+        result = result[filters.offset:filters.offset + filters.limit]
+
+    else:
+        result = result[filters.offset:]
 
     return result

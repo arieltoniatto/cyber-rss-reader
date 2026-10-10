@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from parser.models import Article
 from search.engine import SearchEngine
-from search.models import SearchFilters
+from search.models import SearchFilters, SearchMatch
 from search.query import SearchQuery
 from storage.interfaces import ArticleRepository
 
@@ -40,10 +40,12 @@ class SearchService:
         tag: str | None = None,
         today: bool = False,
         last_week: bool = False,
-        newest: bool = True,
+        newest: bool | None = None,
         oldest: bool = False,
         limit: int = 20,
         fuzzy_threshold: int = 80,
+        offset: int = 0,
+        match_mode: SearchMatch = SearchMatch.fuzzy,
     ) -> list[Article]:
         """
         Search cached articles.
@@ -54,8 +56,6 @@ class SearchService:
 
         exclude      -> NOT
         """
-
-        articles = self._repository.load()
 
         if keyword:
             keywords = [keyword, *(keywords or [])]
@@ -78,14 +78,16 @@ class SearchService:
             last_week=last_week,
             category=category,
             source=source,
-            newest=newest,
+            newest=not oldest if newest is None else newest,
             oldest=oldest,
             limit=limit,
             fuzzy_threshold=fuzzy_threshold,
+            offset=offset,
+            match_mode=match_mode,
         )
 
         return self._engine.search(
-            articles,
+            self._repository.load(),
             query,
             filters,
         )

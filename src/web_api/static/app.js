@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const limit = 20;
+  const feedLimit = 20;
   const labels = {apt:"APT", detection:"Detecção", dfir:"DFIR", exploit:"Exploits", government:"Governo", malware:"Malware", news:"Notícias", osint:"OSINT", podcasts:"Podcasts", threat_hunting:"Threat hunting", threat_intelligence:"Threat intelligence", vendors:"Fornecedores", vulnerability:"Vulnerabilidades"};
   const number = new Intl.NumberFormat("pt-BR");
   const scores = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:3});
@@ -21,11 +21,14 @@
     const params = new URLSearchParams(location.search);
     const q = (params.get("q") || "").slice(0,500);
     const offset = Math.max(0, Math.floor(Number(params.get("offset")) || 0));
-    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics","sources","backups"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
+    const resultLimit=[10,20,50,100].includes(Number(params.get("limit"))) ? Number(params.get("limit")) : 20;
+    const threshold=Number(params.get("fuzzy_threshold") ?? 80);
+    return {limit:resultLimit,order:params.get("order")==="oldest" ? "oldest" : "newest",period:["today","week"].includes(params.get("period")) ? params.get("period") : "all",match:params.get("match")==="exact" ? "exact" : "fuzzy",fuzzy_threshold:Number.isInteger(threshold) && threshold>=0 && threshold<=100 ? threshold : 80,q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics","sources","backups"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
   }
   function writeURL(replace=false) {
     const params = new URLSearchParams();
     for (const key of ["q","category","source","tag","offset","article"]) if (state[key]) params.set(key,state[key]);
+    for(const [key,value] of Object.entries({limit:20,order:"newest",period:"all",match:"fuzzy",fuzzy_threshold:80})) if(state[key]!==value) params.set(key,state[key]);
     if (state.view === "feeds") {params.set("view","feeds"); if(state.feedStatus) params.set("status",state.feedStatus); if(state.feedOffset) params.set("feedOffset",state.feedOffset);}
     if(["topics","sources","backups"].includes(state.view)) params.set("view",state.view);
     if(state.topicLimit!==20) params.set("topicLimit",state.topicLimit);
@@ -61,6 +64,9 @@
   }
   function controls() {
     $("search").value=state.q; $("source").value=state.source; $("tag").value=state.tag;
+    $("result-limit").value=state.limit;$("result-order").value=state.order;$("result-period").value=state.period;
+    $("search-match").value=state.match;$("search-match").disabled=!state.q;
+    $("fuzzy-threshold").value=state.fuzzy_threshold;$("fuzzy-threshold").disabled=!state.q || state.match==="exact";
     $("feed-filter").value=state.feedStatus;
     $("topics-limit").value=state.topicLimit;
     for(const view of ["articles","topics","feeds","sources","backups"]) {
@@ -132,16 +138,17 @@
     articleController?.abort(); const controller=articleController=new AbortController();
     $("article-list").setAttribute("aria-busy","true");$("article-list").classList.add("loading");
     $("articles-message").hidden=true; $("next").disabled=true;$("previous").disabled=true;$("results-note").textContent="Carregando artigos…";
-    const params=new URLSearchParams({limit,offset:state.offset});
+    const params=new URLSearchParams({limit:state.limit,offset:state.offset,order:state.order,period:state.period});
     for(const key of ["q","category","source","tag"]) if(state[key]) params.set(key,state[key]);
+    if(state.q) {params.set("match",state.match);params.set("fuzzy_threshold",state.fuzzy_threshold);}
     try {
       const data=await request((state.q ? "/search?" : "/articles?")+params,controller.signal);
       if(controller!==articleController) return;
       $("article-list").replaceChildren(...data.items.map(renderArticle));
       $("results-note").textContent=`${data.items.length} ${data.items.length===1 ? "artigo" : "artigos"} nesta página`;
-      $("page-number").textContent=`Página ${Math.floor(state.offset/limit)+1}`;
+      $("page-number").textContent=`Página ${Math.floor(state.offset/state.limit)+1}`;
       $("previous").disabled=state.offset===0;
-      $("next").disabled=!data.has_more || Boolean(state.q && state.offset+limit>10000);
+      $("next").disabled=!data.has_more || Boolean(state.q && state.offset+state.limit>10000);
       if(!data.items.length) message("articles-message",(facets.total || state.q || state.category || state.source || state.tag || state.offset) ? "Nenhum artigo encontrado" : "Seu arquivo está pronto para começar",(facets.total || state.q || state.category || state.source || state.tag || state.offset) ? "Tente outra busca ou ajuste os filtros." : "Os artigos aparecerão aqui após a primeira coleta.");
     } catch(error) {
       if(error.name==="AbortError") return;
@@ -166,11 +173,11 @@
   async function loadFeeds() {
     feedController?.abort(); const controller=feedController=new AbortController();
     $("feed-list").classList.add("loading");$("feeds-message").hidden=true;$("feeds-next").disabled=true;$("feeds-previous").disabled=true;
-    const params=new URLSearchParams({limit,offset:state.feedOffset});if(state.feedStatus) params.set("status",state.feedStatus);
+    const params=new URLSearchParams({limit:feedLimit,offset:state.feedOffset});if(state.feedStatus) params.set("status",state.feedStatus);
     try {
       const data=await request("/feeds?"+params,controller.signal); if(controller!==feedController) return;
       renderStats(data); $("feed-list").replaceChildren(...data.items.map(renderFeed));
-      $("feeds-page").textContent=`Página ${Math.floor(state.feedOffset/limit)+1}`;
+      $("feeds-page").textContent=`Página ${Math.floor(state.feedOffset/feedLimit)+1}`;
       $("feeds-next").disabled=!data.has_more;$("feeds-previous").disabled=!state.feedOffset;
       if(!data.items.length) message("feeds-message","Nenhum feed neste estado",data.summary.total ? "Selecione outro estado para ver as fontes." : "Os estados aparecerão após a primeira coleta.");
     } catch(error) {if(error.name!=="AbortError") {$("feed-list").replaceChildren();message("feeds-message","Não foi possível carregar os feeds","Tente novamente para consultar o estado das fontes.",loadFeeds);}}
@@ -193,7 +200,7 @@
       if(controller!==topicController) return;
       const maximum=Math.max(1,...data.items.map(topic=>topic.score));
       $("topic-list").replaceChildren(...data.items.map((topic,index)=>{
-        const card=button("","topic-card",()=>updateArticles({q:topic.topic,category:"",source:"",tag:""}));
+        const card=button("","topic-card",()=>updateArticles({q:topic.topic,category:"",source:"",tag:"",period:"all"}));
         const top=element("span","topic-top");top.append(element("span","topic-rank",String(index+1).padStart(2,"0")),element("span","topic-term",topic.topic));
         const relevance=element("meter","topic-relevance");relevance.min=0;relevance.max=maximum;relevance.value=topic.score;relevance.setAttribute("aria-label",`Relevância de ${topic.topic}`);
         const bottom=element("span","topic-bottom");bottom.append(element("span","",`Relevância ${scores.format(topic.score)}`),element("span","topic-action","Buscar artigos ↗"));
@@ -411,7 +418,11 @@
   $("filters-form").addEventListener("submit",event=>{event.preventDefault();updateArticles({source:$("source").value,tag:$("tag").value.trim()});});
   $("source").addEventListener("change",()=>updateArticles({source:$("source").value}));
   $("tag").addEventListener("change",()=>updateArticles({tag:$("tag").value.trim()}));
-  $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:""}));
+  for(const [id,key] of [["result-limit","limit"],["result-order","order"],["result-period","period"],["search-match","match"],["fuzzy-threshold","fuzzy_threshold"]]) $(id).addEventListener("change",()=>{
+    if(!$(id).checkValidity()) {$(id).reportValidity();return;}
+    updateArticles({[key]:["limit","fuzzy_threshold"].includes(key) ? Number($(id).value) : $(id).value});
+  });
+  $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:"",limit:20,order:"newest",period:"all",match:"fuzzy",fuzzy_threshold:80}));
   $("all-categories").addEventListener("click",()=>updateArticles({category:""}));
   $("nav-backups").addEventListener("click",()=>navigate("backups"));
   $("create-backup").addEventListener("click",createBackup);
@@ -426,11 +437,11 @@
   $("nav-articles").addEventListener("click",()=>navigate("articles"));$("nav-feeds").addEventListener("click",()=>navigate("feeds"));$("stat-errors-button").addEventListener("click",()=>navigate("feeds","error"));
   $("collect-now").addEventListener("click",collectNow);
   $("refresh").addEventListener("click",refresh);
-  $("previous").addEventListener("click",()=>{state.offset=Math.max(0,state.offset-limit);writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});
-  $("next").addEventListener("click",()=>{state.offset+=limit;writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});
+  $("previous").addEventListener("click",()=>{state.offset=Math.max(0,state.offset-state.limit);writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});
+  $("next").addEventListener("click",()=>{state.offset+=state.limit;writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});
   $("feed-filter").addEventListener("change",()=>{state.feedStatus=$("feed-filter").value;state.feedOffset=0;writeURL();loadFeeds();});
-  $("feeds-previous").addEventListener("click",()=>{state.feedOffset=Math.max(0,state.feedOffset-limit);writeURL();loadFeeds();});
-  $("feeds-next").addEventListener("click",()=>{state.feedOffset+=limit;writeURL();loadFeeds();});
+  $("feeds-previous").addEventListener("click",()=>{state.feedOffset=Math.max(0,state.feedOffset-feedLimit);writeURL();loadFeeds();});
+  $("feeds-next").addEventListener("click",()=>{state.feedOffset+=feedLimit;writeURL();loadFeeds();});
   $("close-detail").addEventListener("click",()=>closeDetail());$("article-dialog").addEventListener("cancel",event=>{event.preventDefault();closeDetail();});
   $("article-dialog").addEventListener("click",event=>{const box=$("article-dialog").getBoundingClientRect();if(event.target===$("article-dialog") && (event.clientX<box.left || event.clientX>box.right || event.clientY<box.top || event.clientY>box.bottom)) closeDetail();});
   $("menu-toggle").addEventListener("click",()=>{const open=$("sidebar").classList.toggle("open");$("menu-toggle").setAttribute("aria-expanded",String(open));syncMenuAccessibility();});

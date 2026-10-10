@@ -374,7 +374,31 @@ rss search vulnerability \
   --source "CISA News"
 ```
 
-The CLI currently accepts `--limit`, but the search command does not yet apply it to the returned results. This is a known implementation limitation.
+Search results default to the 20 newest articles. Matching and metadata/date
+filters run before sorting and pagination; `--limit` must be positive and
+`--offset` cannot be negative. For example:
+
+```bash
+rss search ransomware --tag research --limit 10 --offset 10 --order oldest
+rss search ransomware --period week --match exact
+rss search ransmware --match fuzzy --fuzzy-threshold 90
+```
+
+| Option | Values / behavior |
+| --- | --- |
+| `--limit`, `-n` | Positive result count, default 20 |
+| `--offset` | Matching results to skip after ordering, default 0 |
+| `--order` | `newest` (default) or `oldest`, by publication date |
+| `--period` | `all` (default), `today` (UTC day), or `week` (last 7 days up to now) |
+| `--match` | `fuzzy` (default) or `exact` |
+| `--fuzzy-threshold` | Integer 0–100, default 80; higher values restrict approximate matches |
+| `--tag`, `-t` | Case-insensitive tag filter, alongside category and source |
+
+Exact matching means a case-insensitive substring of the indexed title,
+summary, author, source, category or tags, not a whole-word or full-article
+search. The fuzzy threshold is ignored in exact mode. Undated articles are
+excluded from date-filtered searches; with the full archive they appear last
+for newest ordering and first for oldest ordering.
 
 ### Extract topics
 
@@ -634,14 +658,19 @@ runs outside the HTTP event loop, following the
 | `GET /collection` | Manual collection result or active automatic cycle |
 | `POST /collection` | Start background collection, with an explicit intent header |
 | `GET /feeds` | Per-feed collection status, optional `status`, `limit`, `offset` |
-| `GET /articles` | Latest articles with `category`, `source`, `tag`, `limit`, `offset` |
-| `GET /search?q=malware` | Fuzzy text search with `category`, `source`, `limit`, `offset` |
+| `GET /articles` | Latest articles with `category`, `source`, `tag`, `limit`, `offset`, `order`, `period` |
+| `GET /search?q=malware` | Text search with metadata filters, pagination, `order`, `period`, `match`, `fuzzy_threshold` |
 | `GET /topics` | TF-IDF topics with `limit` |
 
 Article and search responses include `items`, `limit`, `offset`, and `has_more`.
-Article objects include a stable `id`. Limits range from 1 to 100. Unknown
-filters return an empty list. `/articles` filters and pagination run in SQLite;
-search and topic extraction currently process the archive in memory.
+Both endpoints validate limits of 1–100 and nonnegative offsets; `/search`
+keeps its offset ceiling of 10,000. `order`, `period`, `match` and
+`fuzzy_threshold` use the same values and defaults as the CLI above. Invalid
+controls return HTTP 422. `/articles` supports order and period without a
+text query; its default path keeps SQL pagination, while date/oldest controls
+and text searches currently filter the archive in memory.
+Article objects include a stable `id`. Unknown metadata filters return an empty
+list. Topic extraction also currently processes the archive in memory.
 
 ### Browser interface
 
@@ -909,9 +938,14 @@ Development dependencies:
 
 ## Roadmap
 
+Implemented: validated search limits and pagination, publication order,
+UTC publication periods, exact/fuzzy matching and similarity controls in the
+CLI, API and web interface. The web interface offers 10/20/50/100 results per
+page and preserves controls in the URL, reloads and browser history. Changing
+a control resets pagination; **Limpar filtros** restores all defaults.
+
 Potential next stages:
 
-- enforce and expand search result controls
 - add IOC and threat actor CLI filters
 - improve IOC and malware validation and false-positive handling
 - add ATT&CK technique, campaign, and relationship mapping

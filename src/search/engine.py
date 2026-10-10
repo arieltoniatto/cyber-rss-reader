@@ -17,6 +17,9 @@ class SearchEngine:
         filters: SearchFilters | None = None,
     ) -> list[Article]:
 
+        if filters:
+            filters.validate()
+
         matched = []
 
         for article in articles:
@@ -49,6 +52,11 @@ class SearchEngine:
             else 80
         )
 
+        def contains(text, keyword):
+            if filters and filters.match_mode == "exact":
+                return keyword.casefold() in text.casefold()
+            return fuzzy_contains(text, keyword, threshold)
+
         #######################################################
         # AND searches
         #######################################################
@@ -69,11 +77,7 @@ class SearchEngine:
 
             for keyword in keywords:
 
-                if not fuzzy_contains(
-                    text,
-                    keyword,
-                    threshold,
-                ):
+                if not contains(text, keyword):
                     return False
 
         #######################################################
@@ -85,11 +89,7 @@ class SearchEngine:
             combined = " ".join(fields.values())
 
             if not any(
-                fuzzy_contains(
-                    combined,
-                    keyword,
-                    threshold,
-                )
+                contains(combined, keyword)
                 for keyword in query.any_terms
             ):
                 return False
@@ -104,11 +104,7 @@ class SearchEngine:
 
             for keyword in query.exclude:
 
-                if fuzzy_contains(
-                    combined,
-                    keyword,
-                    threshold,
-                ):
+                if contains(combined, keyword):
                     return False
 
         return True
