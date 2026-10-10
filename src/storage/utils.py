@@ -7,7 +7,8 @@ from datetime import datetime
 
 from parser.dates import normalize_datetime
 
-from parser.models import Article, IOC, IOCType
+from parser.models import Article, IOC, IOCType, AttackMapping
+from dataclasses import asdict
 
 
 def article_key(article: Article) -> str:
@@ -91,6 +92,7 @@ def article_to_dict(
             ioc_to_dict(ioc)
             for ioc in article.iocs
         ],
+        "attack": asdict(article.attack) if article.attack else None,
         "malware": list(article.malware),
         "threat_actors": list(
             article.threat_actors
@@ -143,6 +145,15 @@ def article_from_dict(data: dict) -> Article:
         else []
     )
 
+    attack = None
+    raw_attack = data.get('attack')
+    if isinstance(raw_attack, dict) and isinstance(raw_attack.get('catalog_version'), str):
+        identifiers = {}
+        for key in ('entity_ids', 'technique_ids', 'campaign_ids'):
+            values = raw_attack.get(key, [])
+            identifiers[key] = sorted({value for value in values if isinstance(value, str)}) if isinstance(values, list) else []
+        attack = AttackMapping(catalog_version=raw_attack['catalog_version'], **identifiers)
+
     return Article(
         title=str(data.get("title") or ""),
         source=str(data.get("source") or ""),
@@ -162,5 +173,6 @@ def article_from_dict(data: dict) -> Article:
         tags=tags,
         iocs=iocs,
         malware=malware,
+        attack=attack,
         threat_actors=threat_actors,
     )

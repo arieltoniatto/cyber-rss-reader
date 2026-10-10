@@ -20,6 +20,7 @@ def main() -> None:
         article_service=container.article_service,
         search_service=container.search_service,
         topic_service=container.topic_service,
+        attack_service=container.attack_service,
     )
 
     app = create_cli(services)

@@ -23,7 +23,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from config.paths import ARTICLE_DATABASE_FILE
+from config.paths import ARTICLE_DATABASE_FILE, ATTACK_MAPPING_CATALOG_FILE
+from cti.attack_mapping import AttackCatalog
 from search.engine import SearchEngine
 from search.models import SearchOrder, SearchPeriod, SearchMatch
 from services.search_service import SearchService
@@ -67,12 +68,14 @@ def create_app(repository: ArticleRepository | None = None, *,
                security: SecuritySettings | None = None,
                collection_service_factory=None,
                feed_directory: Path = FEED_DIRECTORY,
-               backup_directory: Path | None = None) -> FastAPI:
+               backup_directory: Path | None = None,
+               attack_catalog_file: Path = ATTACK_MAPPING_CATALOG_FILE) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
                                 await run_in_threadpool(SQLiteArticleRepository, database_file))
         archive = getattr(app.state.repository, 'database_file', database_file)
+        app.state.attack_catalog = await run_in_threadpool(AttackCatalog.load, attack_catalog_file)
         app.state.feed_registry = FeedRegistry(archive, feed_directory)
         app.state.collection = CollectionController(archive, collection_service_factory or (
             lambda: ApplicationContainer(
@@ -195,7 +198,12 @@ def create_app(repository: ArticleRepository | None = None, *,
         article = app.state.repository.get(id)
         if article is None:
             raise HTTPException(status_code=404, detail='Article not found')
-        return serialize(article)
+        catalog = app.state.attack_catalog
+        mapping = article.attack or (catalog.detect(article) if catalog else None)
+        details = catalog.describe(mapping) if catalog else {
+            'status': 'unavailable', 'catalog_version': article.attack.catalog_version if article.attack else None,
+            'techniques': [], 'campaigns': [], 'relationships': []}
+        return {**serialize(article), 'attack': asdict(mapping) if mapping else None, 'attack_details': details}
 
     @app.get("/articles")
     def articles(category: str | None = Query(None, max_length=200),

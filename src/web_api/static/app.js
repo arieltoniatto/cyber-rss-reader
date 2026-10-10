@@ -346,6 +346,35 @@
     const chips=element("div","detail-chips");values.forEach(value=>chips.append(element("span","pill"+(kind ? " entity-pill" : ""),value)));section.append(chips);return section;
   }
   function safeArticleURL(value) {try {const url=new URL(value);return ["https:","http:"].includes(url.protocol) ? url.href : null;}catch{return null;}}
+  function renderAttack(article) {
+    const section=element("section","detail-section attack-details");section.append(element("h3","","Mapeamento ATT&CK"));
+    const data=article.attack_details;
+    if(!data || data.status!=="ok") {
+      const messages={unavailable:"O catálogo ATT&CK está indisponível.",version_mismatch:"Este artigo usa outra versão do catálogo. As referências originais foram preservadas.",not_enriched:"Este artigo ainda não possui mapeamento ATT&CK."};
+      section.append(element("p","detail-empty",messages[data?.status] || "Nenhum mapeamento disponível."));
+      if(article.attack?.entity_ids.length) section.append(element("p","detail-empty",article.attack.entity_ids.join(" · ")));
+      return section;
+    }
+    section.append(element("p","detail-notice",`MITRE ATT&CK ${data.catalog_version}. Referências do artigo e relações do catálogo são apresentadas separadamente.`));
+    for(const [basis,title] of [["article","Técnicas e campanhas mencionadas"],["catalog","Técnicas e campanhas relacionadas no catálogo"]]) {
+      const group=element("div","attack-group");group.append(element("h4","",title));
+      const nodes=[...data.techniques,...data.campaigns].filter(node=>node.basis===basis);
+      if(!nodes.length) group.append(element("p","detail-empty","Nenhuma referência encontrada."));
+      else {const chips=element("div","detail-chips attack-chips");nodes.forEach(node=>{const link=element("a","pill",`${node.id} · ${node.name}`);link.href=node.url;link.target="_blank";link.rel="noopener noreferrer";chips.append(link);});group.append(chips);}
+      section.append(group);
+    }
+    if(data.relationships.length) {
+      const detail=element("details","attack-relations"),list=element("div","attack-relation-list");
+      detail.append(element("summary","",`${data.relationships.length} relações do catálogo MITRE`));
+      detail.append(element("p","detail-notice","Estas relações são contexto do catálogo e não confirmam uso ou atribuição nesta notícia."));
+      const labels={uses:"usa", "attributed-to":"atribuída a", "subtechnique-of":"subtécnica de"};
+      data.relationships.forEach(edge=>{
+        const row=element("div","attack-relation");row.append(element("p","",`${edge.source.id} · ${edge.source.name} → ${labels[edge.type] || edge.type} → ${edge.target.id} · ${edge.target.name}`));
+        if(edge.description) row.append(element("small","",edge.description));list.append(row);
+      });detail.append(list);section.append(detail);
+    }
+    return section;
+  }
   function renderDetail(article) {
     const content=$("detail-content"); const title=element("h2","",article.title);title.id="detail-title";
     content.replaceChildren(element("span","pill category-pill",categoryName(article.category || "Sem categoria")),title,element("p","detail-meta",`${article.source} · ${formatDate(article.published,true)}${article.author ? " · " + article.author : ""}`),element("p","detail-summary",article.summary || "Resumo não disponível neste feed."));
@@ -353,6 +382,7 @@
     const iocs=element("section","detail-section");iocs.append(element("h3","","Indicadores de compromisso"));
     if(!article.iocs.length) iocs.append(element("p","detail-empty","Nenhum IOC extraído deste artigo."));
     else {const list=element("div","ioc-list");article.iocs.forEach(ioc=>{const row=element("div","ioc-row");const copy=button("Copiar","ioc-copy",async()=>{try{await navigator.clipboard.writeText(ioc.value);copy.textContent="Copiado";}catch{copy.textContent="Selecione o texto";}});copy.setAttribute("aria-label",`Copiar ${ioc.type}: ${ioc.value}`);row.append(element("span","ioc-type",ioc.type),element("code","ioc-value",ioc.value),copy);list.append(row);});iocs.append(list);}
+    content.append(renderAttack(article));
     content.append(iocs,element("p","detail-notice","Os indicadores e nomes são extraídos do texto do feed. Valide o contexto antes de usá-los em uma investigação."));
     const actions=element("div","detail-actions"),url=safeArticleURL(article.url);
     if(url) {const link=element("a","primary-button","Abrir artigo original ↗");link.href=url;link.target="_blank";link.rel="noopener noreferrer";actions.append(link);}

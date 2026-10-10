@@ -57,3 +57,5 @@ dialog{max-width:820px;width:calc(100% - 32px);max-height:85vh;border:1px solid 
 @media(max-width:800px){.backups-toolbar{flex-direction:column;align-items:flex-start}.backup-top{flex-direction:column;align-items:flex-start}.backup-metrics{gap:10px}.backup-card{padding:18px}}
 
 .filters-form{flex-wrap:wrap}.filters-form #fuzzy-threshold{width:65px}.search-controls-note{font-size:11px;color:var(--muted);line-height:1.7;margin:-8px 0 20px;max-width:850px}
+
+.attack-group{margin-top:18px}.attack-group h4{color:var(--text-secondary);font-size:12px;font-weight:500;margin:0 0 10px}.attack-chips{max-height:220px;overflow:auto}.attack-chips a{text-decoration:none}.attack-chips a:hover{border-color:var(--accent)}.attack-relations{margin-top:18px}.attack-relations summary{color:var(--accent);cursor:pointer;font-size:12px}.attack-relation-list{max-height:350px;overflow:auto;display:grid;gap:8px}.attack-relation{padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;overflow-wrap:anywhere}.attack-relation p{margin:0;font-size:12px}.attack-relation small{display:block;margin-top:6px;color:var(--muted);font-size:11px;white-space:pre-wrap}

@@ -29,6 +29,15 @@ class IOC:
 
 
 @dataclass(slots=True, frozen=True)
+class AttackMapping:
+    """Article references pinned to a catalog release; relationships resolve on demand."""
+    catalog_version: str
+    entity_ids: list[str] = field(default_factory=list)
+    technique_ids: list[str] = field(default_factory=list)
+    campaign_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True, frozen=True)
 class Article:
     """
     Unified article model used throughout the application,
@@ -48,3 +57,5 @@ class Article:
     iocs: list[IOC] = field(default_factory=list)
     malware: list[str] = field(default_factory=list)
     threat_actors: list[str] = field(default_factory=list)
+
+    attack: AttackMapping | None = None

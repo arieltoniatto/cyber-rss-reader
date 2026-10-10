@@ -116,3 +116,35 @@ def test_result_controls_filter_then_sort_then_paginate(tmp_path):
         assert not client.get('/search', params={'q': 'ransmware', 'fuzzy_threshold': 100}).json()['items']
         for bad in ({'match': 'unknown'}, {'fuzzy_threshold': -1}, {'fuzzy_threshold': 101}, {'offset': 10001}):
             assert client.get('/search', params={'q': 'malware', **bad}).status_code == 422
+
+
+def test_attack_detail_resolves_legacy_articles_and_preserves_provenance(tmp_path):
+    from parser.models import AttackMapping
+
+    repo = SQLiteArticleRepository(tmp_path / 'archive.sqlite3')
+    repo.save([Article(title='Technique T1059.001', source='Source', summary='Campaign C0001',
+                       url='https://example.com/attack', malware=['BlackEnergy'], threat_actors=['APT28'])])
+    with TestClient(create_app(repo)) as client:
+        row = client.get('/articles').json()['items'][0]
+        assert row['attack'] is None
+        detail = client.get('/articles/detail', params={'id': row['id']}).json()
+        assert 'T1059.001' in detail['attack']['technique_ids']
+        assert detail['attack']['catalog_version'] == '19.1'
+        assert detail['attack_details']['status'] == 'ok'
+        techniques = detail['attack_details']['techniques']
+        assert next(n for n in techniques if n['id'] == 'T1059.001')['basis'] == 'article'
+        assert any(n['basis'] == 'catalog' for n in techniques)
+        assert all(edge['basis'] == 'catalog' for edge in detail['attack_details']['relationships'])
+        assert repo.load()[0].attack is None
+    repo.save([Article(title='Old mapping', source='Source', summary='', url='https://example.com/old',
+                       attack=AttackMapping('older', entity_ids=['T1059']))])
+    with TestClient(create_app(repo)) as client:
+        rows = client.get('/articles').json()['items']
+        old = next(row for row in rows if row['title'] == 'Old mapping')
+        detail = client.get('/articles/detail', params={'id': old['id']}).json()
+        assert detail['attack_details']['status'] == 'version_mismatch'
+        assert detail['attack']['entity_ids'] == ['T1059']
+        assert not detail['attack_details']['relationships']
+    with TestClient(create_app(repo, attack_catalog_file=tmp_path / 'missing.json')) as client:
+        assert client.get('/health').status_code == 200
+        assert client.get('/articles/detail', params={'id': old['id']}).json()['attack_details']['status'] == 'unavailable'

@@ -1,6 +1,7 @@
 """Browser tests: install .[dev,browser], then playwright install chromium."""
 from datetime import datetime, timezone
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -25,7 +26,7 @@ def frontend_server(tmp_path_factory):
     repo = SQLiteArticleRepository(database)
     articles = [Article(title=f'Malware report {i:02}', source='Source A' if i % 2 == 0 else 'Source B',
                         category='news' if i % 2 == 0 else 'malware',
-                        summary=f'Investigation of ransomware campaign {i}.', url=f'https://example.com/{i}',
+                        summary=f'Investigation of ransomware campaign {i}.' + (' T1059.001 C0001' if i == 24 else ''), url=f'https://example.com/{i}',
                         tags=['ransomware' if i % 2 == 0 else 'research'], malware=['BlackEnergy'],
                         threat_actors=['APT28'], iocs=[IOC(IOCType.CVE, 'CVE-2026-1234')],
                         published=datetime(2026, 1, i + 1, tzinfo=timezone.utc)) for i in range(26)]
@@ -514,3 +515,21 @@ def test_invalid_url_controls_use_valid_defaults(page, frontend_server):
     expect(page.locator('#search-match')).to_have_value('fuzzy')
     expect(page.locator('#fuzzy-threshold')).to_have_value('80')
     expect(page.locator('.article-card')).to_have_count(20)
+
+
+def test_attack_mapping_distinguishes_article_references_from_catalog_context(page):
+    page.get_by_role('button', name='Malware report 24', exact=True).click()
+    expect(page.locator('.attack-details')).to_contain_text('MITRE ATT&CK 19.1')
+    expect(page.locator('.attack-details')).to_contain_text('Técnicas e campanhas mencionadas')
+    expect(page.locator('.attack-details')).to_contain_text('Técnicas e campanhas relacionadas no catálogo')
+    expect(page.locator('.attack-group').first).to_contain_text('T1059.001')
+    expect(page.locator('.attack-group').first).to_contain_text('C0001')
+    expect(page.locator('.attack-group').nth(1).locator('a').first).to_have_attribute('href', re.compile(r'https://attack\.mitre\.org/(techniques|campaigns)/'))
+    page.locator('.attack-relations summary').click()
+    expect(page.locator('.attack-relations')).to_contain_text('não confirmam uso ou atribuição nesta notícia')
+    expect(page.locator('.attack-relation').first).to_be_visible()
+    expect(page.locator('#article-dialog img, #article-dialog script')).to_have_count(0)
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.wait_for_timeout(300)
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert page.locator('#article-dialog').evaluate('(dialog) => dialog.scrollWidth <= dialog.clientWidth')

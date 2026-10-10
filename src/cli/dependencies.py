@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from services.article_service import ArticleService
 from services.search_service import SearchService
 from services.topic_service import TopicService
+from services.attack_service import AttackService
 
 
 @dataclass(slots=True)
@@ -21,3 +22,4 @@ class CLIServices:
     search_service: SearchService
 
     topic_service: TopicService
+    attack_service: AttackService | None = None

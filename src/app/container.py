@@ -6,6 +6,7 @@ from pathlib import Path
 
 from config.paths import (
     ARTICLE_DATABASE_FILE,
+    ATTACK_MAPPING_CATALOG_FILE,
     FEED_DIRECTORY,
     MALWARE_CATALOG_FILE,
     THREAT_ACTOR_CATALOG_FILE,
@@ -17,6 +18,9 @@ from enrichment.tag_enricher import TagEnricher
 from enrichment.ioc_enricher import IOCEnricher
 from enrichment.malware_enricher import MalwareEnricher
 from enrichment.threat_actor_enricher import ThreatActorEnricher
+from enrichment.attack_enricher import AttackEnricher
+from cti.attack_mapping import AttackCatalog
+from services.attack_service import AttackService
 from feeds.fetcher import RSSFetcher
 from parser.parser import RSSParser
 from search.engine import SearchEngine
@@ -105,12 +109,16 @@ class ApplicationContainer:
             )
         )
 
+        self.attack_catalog = AttackCatalog.load(ATTACK_MAPPING_CATALOG_FILE)
+        self.attack_enricher = AttackEnricher(self.attack_catalog)
+
         self.enrichment_pipeline = EnrichmentPipeline(
             enrichers=[
                 self.tag_enricher,
                 self.ioc_enricher,
                 self.malware_enricher,
                 self.threat_actor_enricher,
+                self.attack_enricher,
             ],
             continue_on_error=True,
         )
@@ -131,6 +139,8 @@ class ApplicationContainer:
             repository=self.repository,
             engine=self.search_engine,
         )
+
+        self.attack_service = AttackService(self.search_service, self.attack_catalog)
 
         self.topic_service = TopicService(
             repository=self.repository,

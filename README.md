@@ -194,6 +194,8 @@ flowchart TD
     EnrichmentPipeline --> IOCEnricher
     EnrichmentPipeline --> MalwareEnricher
     EnrichmentPipeline --> ThreatActorEnricher
+    EnrichmentPipeline --> AttackEnricher
+    AttackEnricher --> AttackCatalog
 
     MalwareCatalog[MITRE ATT&CK malware catalog] --> MalwareEnricher
     ThreatActorCatalog[MITRE ATT&CK actor catalog] --> ThreatActorEnricher
@@ -306,6 +308,7 @@ python -m pip install -e .
 rss --help
 rss-update-actors --help
 rss-update-malware --help
+rss-update-attack --help
 python -m pip check
 ```
 
@@ -316,6 +319,7 @@ The installation creates two console commands:
 | `rss` | Main RSS reader CLI |
 | `rss-update-actors` | Download ATT&CK STIX and rebuild the actor catalog |
 | `rss-update-malware` | Build the malware catalog from a local ATT&CK STIX bundle |
+| `rss-update-attack` | Build the versioned technique/campaign/relationship graph from a local STIX bundle |
 
 ## Usage
 
@@ -495,6 +499,69 @@ rss category threat_intelligence
 ```bash
 rss category malware --limit 10
 ```
+
+### ATT&CK techniques, campaigns and relationships
+
+The packaged `src/config/catalogs/attack_mapping.json` contains the active
+Enterprise ATT&CK 19.1 graph: techniques/subtechniques, campaigns, groups,
+malware and tools. It is built from the existing local STIX release, with
+1,748 entities and 18,721 supported relationships. Latest object revisions are
+selected before revoked/deprecated objects and dangling relationships are
+removed. Mapping uses the [MITRE relationship model](https://mitre-attack.github.io/attack-data-model/schemas/relationship-types/).
+
+`AttackEnricher` runs after malware and actor enrichment. It recognizes known
+ATT&CK IDs (`T1059`, `T1059.001`, `C0001`, `G0007`, `S0089`), trusted MITRE
+entity URLs, unambiguous campaign names/aliases, and canonical names already
+identified by the malware/actor enrichers. Technique names alone are not treated
+as proof of a technique; behavioral or semantic technique classification is
+not implemented. Campaign aliases shared with another campaign, group or
+software entry are ignored. Unknown IDs and IDs in unrelated URL paths are ignored.
+
+Each article stores a compact `attack` mapping with `catalog_version`,
+`entity_ids`, `technique_ids` and `campaign_ids`. It does not duplicate catalog
+relationships or descriptions in the archive. Existing SQLite/JSON articles
+remain readable without a schema migration. Articles without saved mapping
+are mapped on demand in the details API and CLI, without rewriting history.
+
+Inspect the mapping from the CLI:
+
+```bash
+rss attack APT28 --limit 1 --max-relations 20
+```
+
+In the web interface, open an article's details and find **Mapeamento ATT&CK**.
+The API adds `attack` and `attack_details` to `GET /articles/detail`.
+Explicit article references use `basis: article`; related techniques/campaigns
+and every relationship use `basis: catalog`. Relations retain their STIX ID,
+source/target ATT&CK IDs, direction, type and catalog description.
+
+Expansion follows `uses` edges from identified entities, software-to-technique
+edges, campaign-to-group `attributed-to` edges, attributed campaigns of identified
+groups, and technique-to-parent `subtechnique-of` edges. It does not reverse
+infer actors from a technique or expand the entire profile of an actor merely
+because a campaign was attributed to that actor. Related techniques and
+campaigns are catalog context, not claims of article-specific use or attribution.
+
+A missing/invalid catalog safely disables new mapping. Saved references remain
+available. If a saved mapping uses another catalog version, detail resolution
+returns `version_mismatch` and keeps the original IDs without applying new
+relationships to an old snapshot. Keep the matching catalog release when
+restoring an archive that needs its original contextual mapping.
+
+Rebuild locally after obtaining a new STIX release through `rss-update-actors`:
+
+```bash
+rss-update-attack --input data/mitre-attack/enterprise-attack-19.1.json
+# Equivalent without reinstalling console entry points:
+python -m tools.update_attack_catalog --input data/mitre-attack/enterprise-attack-19.1.json
+```
+
+The updater accepts `--output` and `--version` (required for an unversioned
+input filename), writes the catalog atomically and rejects an output equal to
+the input bundle. It does not download STIX or follow references during mapping.
+Reinstall the project to register the new console command. Restart API/worker
+(or rebuild/recreate Docker services) after updating the catalog or application.
+`CYBER_RSS_CATALOG_DIR` also selects this catalog's directory.
 
 ## Feed configuration
 
@@ -922,6 +989,7 @@ articles, metadata and per-feed collection state.
 | `logs/` | Runtime logs | No, except `.gitkeep` |
 | `data/mitre-attack/` | Downloaded ATT&CK STIX bundles | No |
 | `src/config/catalogs/malware.json` | Normalized malware catalog | Yes |
+| `src/config/catalogs/attack_mapping.json` | Versioned ATT&CK entity/relationship graph | Yes |
 | `src/config/catalogs/threat_actors.json` | Normalized actor catalog | Yes |
 | `src/config/catalogs/threat_actor_overrides.json` | Local override configuration | Yes |
 
@@ -990,7 +1058,7 @@ Development dependencies:
 
 - SQLite is the default backend; text search and topic extraction still load the archive into memory.
 - The CLI does not currently fetch or index complete article bodies.
-- Malware and threat actor enrichment perform local name and alias matching; they are not full ATT&CK technique, campaign, or relationship mapping.
+- ATT&CK mapping recognizes explicit IDs/references and catalog relationships; semantic classification of article behavior into techniques is not implemented.
 - Ambiguous malware and threat actor aliases are skipped.
 - Malware enrichment requires a generated `src/config/catalogs/malware.json`; an empty or missing catalog safely disables that enricher.
 - The API and frontend support optional authentication, LAN HTTPS and request limits; see [deploy/HTTPS.md](deploy/HTTPS.md). Multiple users/roles and general archive editing are not implemented.
@@ -1010,9 +1078,11 @@ Implemented: `--ioc`, `--ioc-type` and `--threat-actor` filters for
 Implemented: type-specific IOC validation and normalization, stricter token
 boundaries, contextual malware matching and malformed-catalog handling.
 
+Implemented: versioned ATT&CK technique/subtechnique, campaign and relationship
+mapping, available through article details and `rss attack`.
+
 Potential next stages:
 
-- add ATT&CK technique, campaign, and relationship mapping
 - add CVE lookup and vulnerability enrichment
 - support PostgreSQL repositories
 - add configurable retention and future schema migrations
