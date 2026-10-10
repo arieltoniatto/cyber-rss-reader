@@ -150,3 +150,12 @@ edit copies the configured YAML feeds, including disabled ones; subsequent YAML
 changes in an image do not override this archive's managed configuration.
 Changes apply to the next collection. Rebuild and recreate all services when
 upgrading so the periodic worker also reloads managed feeds each cycle.
+
+### Backups in the browser
+
+Open **Backups** to view daily snapshots, generate a manual copy and download
+it as a ZIP. Manual and automatic backups use the same directory and default
+retention of 14 copies. The ZIP includes the database and its verification
+manifest, and also preserves the managed feed configuration. Save a ZIP outside
+the Docker host. Extract it before using the existing CLI restore workflow;
+restoration creates a new archive and does not overwrite a live one.

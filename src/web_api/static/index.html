@@ -20,6 +20,7 @@
         <button id="nav-topics" class="nav-button" type="button"><span aria-hidden="true">◇</span> Tópicos <span class="nav-dot"></span></button>
         <button id="nav-feeds" class="nav-button" type="button"><span aria-hidden="true">◉</span> Coleta de feeds <span id="nav-errors" class="error-count" hidden></span></button>
         <button id="nav-sources" class="nav-button" type="button"><span aria-hidden="true">⚙</span> Gerenciar feeds <span class="nav-dot"></span></button>
+        <button id="nav-backups" class="nav-button" type="button"><span aria-hidden="true">▣</span> Backups <span class="nav-dot"></span></button>
       </nav>
       <div class="category-heading"><p class="nav-label">CATEGORIAS</p><button id="all-categories" class="text-button" type="button">Todas</button></div>
       <nav id="categories" class="categories" aria-label="Categorias de artigos"></nav>
@@ -47,6 +48,15 @@
           <div id="articles-message" class="empty-state" role="status" hidden></div>
           <div id="article-list" class="article-list" aria-live="polite" aria-busy="false"></div>
           <div id="article-pagination" class="pagination"><button id="previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="page-number">Página 1</span><button id="next" class="secondary-button" type="button" disabled>Próxima →</button></div>
+        </section>
+        <section id="backups-section" aria-label="Backups do arquivo" hidden>
+          <div class="backups-toolbar"><div><h2>Cópias do seu arquivo</h2><p id="backups-summary">Carregando backups…</p></div><button id="create-backup" class="primary-button" type="button" disabled>+ Gerar backup agora</button></div>
+          <p class="backups-note" id="backups-retention">Os backups incluem artigos, estado da coleta e configuração dos feeds gerenciados pela web.</p>
+          <p class="backups-note">Baixe uma cópia e guarde fora deste computador. O ZIP contém o banco e seu arquivo de verificação para restauração pela CLI.</p>
+          <p id="backup-status" class="backup-status" role="status" aria-live="polite">Consultando estado do backup…</p>
+          <p id="backups-notice" class="feed-form-error" role="alert" hidden></p>
+          <div id="backups-message" class="empty-state" role="status" hidden></div>
+          <div id="backup-list" class="backup-list" aria-live="polite" aria-busy="false"></div>
         </section>
         <section id="sources-section" aria-label="Configuração dos feeds" hidden>
           <div class="sources-toolbar"><div><h2>Suas fontes</h2><p id="sources-summary">Carregando configuração…</p></div><button id="add-feed" class="primary-button feed-manage-action" type="button">+ Adicionar feed</button></div>

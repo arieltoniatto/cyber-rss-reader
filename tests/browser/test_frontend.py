@@ -50,6 +50,7 @@ def frontend_server(tmp_path_factory):
         # Authentication and request budgets are covered separately.
         environment = {key: value for key, value in os.environ.items()
                        if key not in ('CYBER_RSS_AUTH_FILE', 'CYBER_RSS_TLS_CERT_FILE', 'CYBER_RSS_TLS_KEY_FILE')}
+        environment['CYBER_RSS_BACKUP_DIR'] = str(directory / 'backups')
         environment.update({name: '10000' for name in ('CYBER_RSS_RATE_PER_MINUTE', 'CYBER_RSS_RATE_BURST',
                                                        'CYBER_RSS_RATE_GLOBAL_PER_MINUTE', 'CYBER_RSS_RATE_GLOBAL_BURST')})
         process = subprocess.Popen([sys.executable, '-m', 'web_api.app', '--database', str(database),
@@ -376,3 +377,71 @@ def test_feed_actions_disabled_during_collection(page):
     expect(page.locator('#collection-status')).to_contain_text('coletor automático')
     expect(page.locator('#add-feed')).to_be_disabled()
     expect(page.locator('#source-list .feed-manage-action').first).to_be_disabled()
+
+
+def test_backups_create_download_and_reload(page):
+    page.locator('#nav-backups').click()
+    expect(page.locator('#backups-section')).to_be_visible()
+    expect(page.locator('#backups-message')).to_contain_text('Nenhum backup disponível')
+    expect(page.locator('#create-backup')).to_be_enabled()
+    page.locator('#create-backup').click()
+    expect(page.locator('#backup-status')).to_contain_text('Backup concluído', timeout=10000)
+    expect(page.locator('.backup-card')).to_have_count(1)
+    expect(page.locator('.backup-card')).to_contain_text('27')
+    with page.expect_download() as download_info:
+        page.get_by_role('button', name='Baixar ZIP', exact=False).click()
+    download = download_info.value
+    assert download.suggested_filename.endswith('.zip')
+    from zipfile import ZipFile
+    with ZipFile(download.path()) as bundle:
+        assert any(name.endswith('.sqlite3') for name in bundle.namelist())
+        assert any(name.endswith('.json') for name in bundle.namelist())
+    page.reload()
+    expect(page.locator('.backup-card')).to_have_count(1)
+    expect(page.locator('#nav-backups')).to_have_attribute('aria-current', 'page')
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.wait_for_timeout(250)
+    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+
+
+def test_backups_loading_failure_retry_and_download_error(page):
+    page.route('**/backups', lambda route: route.fulfill(status=503, body='Unavailable'))
+    page.locator('#nav-backups').click()
+    expect(page.locator('#backups-message')).to_contain_text('Não foi possível carregar os backups')
+    page.unroute('**/backups')
+    page.route('**/backups', lambda route: route.fulfill(json={'retention': 14, 'items': [
+        {'id': 'articles-20261010T100000000000Z-1234abcd.sqlite3', 'created_at': '2026-10-10T10:00:00+00:00',
+         'articles': 27, 'feeds': 2, 'size_bytes': 4096, 'downloadable': True}]}))
+    page.locator('#backups-message').get_by_role('button', name='Tentar novamente').click()
+    expect(page.locator('.backup-card')).to_have_count(1)
+    page.route('**/backups/*/download', lambda route: route.fulfill(status=409, json={'detail': 'Backup danificado. Escolha outra cópia.'}))
+    page.get_by_role('button', name='Baixar ZIP', exact=False).click()
+    expect(page.locator('#backups-notice')).to_contain_text('Backup danificado')
+    expect(page.get_by_role('button', name='Baixar ZIP', exact=False)).to_be_enabled()
+
+
+def test_backup_running_and_failure_feedback(page):
+    running = False
+    checks = 0
+    def status(route):
+        nonlocal checks
+        if not running:
+            route.fulfill(json={'status': 'idle'})
+        else:
+            checks += 1
+            route.fulfill(json={'status': 'running'} if checks == 1 else {
+                'status': 'failed', 'error': 'Não foi possível gerar o backup. Tente novamente.'})
+    def start(route):
+        nonlocal running
+        running = True
+        assert route.request.headers['x-cyber-rss-request'] == '1'
+        route.fulfill(status=202, json={'status': 'running'})
+    page.route('**/backups/status', status)
+    page.route('**/backups', lambda route: start(route) if route.request.method == 'POST' else route.continue_())
+    page.locator('#nav-backups').click()
+    expect(page.locator('#create-backup')).to_be_enabled()
+    page.locator('#create-backup').click()
+    expect(page.locator('#create-backup')).to_be_disabled()
+    expect(page.locator('#backup-status')).to_contain_text('Criando e verificando')
+    expect(page.locator('#backup-status')).to_contain_text('Não foi possível gerar', timeout=10000)
+    expect(page.locator('#create-backup')).to_be_enabled()

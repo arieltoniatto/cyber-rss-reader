@@ -624,6 +624,10 @@ runs outside the HTTP event loop, following the
 | `GET /filters` | Available categories, sources and tags from the full archive |
 | `GET /articles/detail?id=...` | Article details by stable ID |
 | `GET /health` | Check archive access |
+| `GET /backups` | Local snapshot list and retention |
+| `GET /backups/status` | Manual backup job state |
+| `POST /backups` | Generate a background snapshot with the intent header |
+| `GET /backups/{backup_id}/download` | Download a verified ZIP of snapshot and manifest |
 | `GET /feed-config` | Configured sources, including disabled feeds |
 | `POST /feed-config` | Add a source for future collection |
 | `PUT /feed-config/{feed_id}` | Edit or enable/disable a source |
@@ -670,6 +674,30 @@ Disabling or changing a URL preserves article history and previous collection
 observations; the collection-status view can still show the last error of a
 source that has since been disabled. Source management does not delete history
 or start a collection automatically. Restart both API and worker after upgrading.
+
+The **Backups** section lists completed local snapshots from both scheduled and
+manual backups, including creation time, article/feed counts and database size.
+**Gerar backup agora** runs the existing verified SQLite snapshot routine in the
+background; queries and feed collection can continue. Manual backups share the
+14-snapshot retention with the default scheduled backup. There is one manual
+backup job at a time; authentication, request budgets and the intent header
+protect the operation. Job status resets after an API restart; snapshots persist.
+
+**Baixar ZIP** includes the original `.sqlite3` and matching `.json` manifest.
+The server validates checksums, SQLite integrity and manifest counts before
+exporting. Only generated snapshot names are accepted, symlinks are rejected,
+and a temporary bundle prevents retention from interrupting a download. Invalid
+metadata appears in the list with downloads disabled. A damaged database is
+rejected when downloading. Copy the ZIP off the server; local copies share its
+disk and do not protect against losing that server.
+
+After extracting the ZIP, use `rss-restore --backup <snapshot.sqlite3> --output
+<new-file.sqlite3>` as documented in the deployment guide. Restoration remains
+a CLI operation into a new archive. The web backup directory follows
+`CYBER_RSS_BACKUP_DIR`, or defaults to `backups` beside the selected database.
+For Docker, backups stay on the persistent archive volume and ZIPs can be saved
+through the browser. Restart the API (or rebuild/recreate the Docker services)
+after upgrading to enable these endpoints.
 
 The **Tópicos** section ranks terms from the entire archive using the existing
 `/topics` endpoint. Select 10, 20, 50 or 100 terms; the selection and view are

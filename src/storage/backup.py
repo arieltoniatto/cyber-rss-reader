@@ -130,3 +130,80 @@ def restore_backup(backup: Path, output: Path) -> Path:
         finally:
             pending.unlink(missing_ok=True)
     return output
+
+
+def _owned_pair(directory: Path, name: str) -> Path:
+    if not _NAME.fullmatch(name):
+        raise FileNotFoundError(name)
+    backup = directory / name
+    manifest = backup.with_suffix('.json')
+    if any(not path.is_file() or path.is_symlink() for path in (backup, manifest)):
+        raise FileNotFoundError(name)
+    return backup
+
+
+def _read_manifest(backup: Path) -> dict:
+    manifest = json.loads(backup.with_suffix('.json').read_text())
+    if (not isinstance(manifest, dict) or manifest.get('file') != backup.name or
+            not isinstance(manifest.get('sha256'), str) or
+            not re.fullmatch(r'[a-f0-9]{64}', manifest['sha256']) or
+            manifest.get('schema_version') not in (1, 2) or
+            any(type(manifest.get(key)) is not int or manifest[key] < 0 for key in ('articles', 'feeds'))):
+        raise ValueError('Invalid backup manifest')
+    created = datetime.fromisoformat(manifest['created_at'])
+    if created.tzinfo is None:
+        raise ValueError('Backup timestamp must include a timezone')
+    return manifest
+
+
+def list_backups(directory: Path) -> list[dict]:
+    """List only our snapshots, with damaged metadata visible but not downloadable."""
+    if not directory.is_dir():
+        return []
+    rows = []
+    with _backup_lock(directory, exclusive=False):
+        for path in sorted(directory.glob('articles-*.sqlite3'), reverse=True):
+            try:
+                backup = _owned_pair(directory, path.name)
+            except FileNotFoundError:
+                continue
+            row = {'id': backup.name, 'size_bytes': backup.stat().st_size,
+                   'created_at': None, 'articles': None, 'feeds': None, 'downloadable': False}
+            try:
+                manifest = _read_manifest(backup)
+            except (ValueError, KeyError, TypeError, OSError):
+                row['error'] = 'Os metadados desta cópia estão inválidos.'
+            else:
+                row.update({key: manifest[key] for key in ('created_at', 'articles', 'feeds')})
+                row['downloadable'] = True
+            rows.append(row)
+    return rows
+
+
+def export_backup(directory: Path, name: str) -> Path:
+    """Verify and ZIP a snapshot with its manifest; retention cannot race the copy."""
+    from zipfile import ZipFile, ZIP_DEFLATED
+
+    if not directory.is_dir():
+        raise FileNotFoundError(name)
+    temporary = None
+    try:
+        with _backup_lock(directory, exclusive=False):
+            backup = _owned_pair(directory, name)
+            manifest = _read_manifest(backup)
+            if _digest(backup) != manifest['sha256']:
+                raise ValueError('Backup checksum does not match')
+            with closing(sqlite3.connect(backup.resolve().as_uri() + '?mode=ro', uri=True, timeout=30)) as connection:
+                metrics = _validate(connection)
+            if any(metrics[key] != manifest.get(key) for key in metrics):
+                raise ValueError('Backup contents do not match the manifest')
+            with tempfile.NamedTemporaryFile(prefix='cyber-rss-backup-', suffix='.zip', delete=False) as stream:
+                temporary = Path(stream.name)
+            with ZipFile(temporary, 'w', compression=ZIP_DEFLATED) as bundle:
+                bundle.write(backup, backup.name)
+                bundle.write(backup.with_suffix('.json'), backup.with_suffix('.json').name)
+        return temporary
+    except BaseException:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise

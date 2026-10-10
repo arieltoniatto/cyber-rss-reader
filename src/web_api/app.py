@@ -16,6 +16,9 @@ from app.container import ApplicationContainer
 from config.feed_registry import FeedRegistry, FeedConflict, FeedNotFound
 from config.paths import FEED_DIRECTORY
 from web_api.collection import CollectionController
+from web_api.backups import BackupController, BackupBusy, BackupDownloadResponse
+from storage.backup import list_backups, export_backup
+import sqlite3
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -62,7 +65,8 @@ def create_app(repository: ArticleRepository | None = None, *,
                database_file: Path = ARTICLE_DATABASE_FILE,
                security: SecuritySettings | None = None,
                collection_service_factory=None,
-               feed_directory: Path = FEED_DIRECTORY) -> FastAPI:
+               feed_directory: Path = FEED_DIRECTORY,
+               backup_directory: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
@@ -72,10 +76,14 @@ def create_app(repository: ArticleRepository | None = None, *,
         app.state.collection = CollectionController(archive, collection_service_factory or (
             lambda: ApplicationContainer(
                 database_file=archive, config_directory=feed_directory).article_service))
+        backup_path = backup_directory if backup_directory is not None else Path(
+            os.environ.get('CYBER_RSS_BACKUP_DIR', str(archive.parent / 'backups')))
+        app.state.backups = BackupController(archive, backup_path)
         try:
             yield
         finally:
             await run_in_threadpool(app.state.collection.close)
+            await run_in_threadpool(app.state.backups.close)
 
     app = FastAPI(title="Cyber RSS Reader", version="0.1.0", lifespan=lifespan)
     app.add_middleware(AccessMiddleware, settings=security if security is not None else SecuritySettings.from_environment())
@@ -93,6 +101,42 @@ def create_app(repository: ArticleRepository | None = None, *,
 
     def serialize(article):
         return {"id": article_key(article), **article_to_dict(article)}
+
+    @app.get('/backups')
+    def backups(response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        return {'items': list_backups(app.state.backups.directory), 'retention': app.state.backups.keep}
+
+    @app.get('/backups/status')
+    def backup_status(response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        return app.state.backups.status()
+
+    @app.post('/backups', status_code=202)
+    def backup_now(request: Request):
+        require_action(request)
+        try:
+            return app.state.backups.start()
+        except BackupBusy:
+            raise HTTPException(status_code=409, detail='Um backup manual já está em andamento.')
+
+    @app.get('/backups/{backup_id}/download')
+    def download_backup(backup_id: str):
+        try:
+            bundle = export_backup(app.state.backups.directory, backup_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail='Backup não encontrado. Atualize a lista.')
+        except (ValueError, KeyError, TypeError, sqlite3.Error):
+            raise HTTPException(status_code=409, detail='Backup inválido ou danificado. Escolha outra cópia.')
+        except OSError:
+            raise HTTPException(status_code=503, detail='Não foi possível preparar o download. Consulte os logs e tente novamente.')
+        try:
+            return BackupDownloadResponse(bundle, media_type='application/zip',
+                                filename=Path(backup_id).with_suffix('.zip').name,
+                                headers={'Cache-Control': 'no-store'})
+        except BaseException:
+            bundle.unlink(missing_ok=True)
+            raise
 
     @app.get('/feed-config')
     def feed_config(response: Response):

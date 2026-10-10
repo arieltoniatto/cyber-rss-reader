@@ -7,7 +7,8 @@
   const scores = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:3});
   const dates = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"short", year:"numeric"});
   const timestamps = new Intl.DateTimeFormat("pt-BR", {dateStyle:"short", timeStyle:"short"});
-  let state = readURL(), articleController, detailController, feedController, topicController, sourceController;
+  let state = readURL(), articleController, detailController, feedController, topicController, sourceController, backupController;
+  let backupTimer, backupRunning=false, backupRequest=false;
   let configuredFeeds=[], editingFeed=null, sourceRequest=false;
   let collectionTimer, collectionWasRunning=false, collectionRequest=false;
   let facets = {categories:[], sources:[], tags:[], total:0};
@@ -20,13 +21,13 @@
     const params = new URLSearchParams(location.search);
     const q = (params.get("q") || "").slice(0,500);
     const offset = Math.max(0, Math.floor(Number(params.get("offset")) || 0));
-    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics","sources"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
+    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics","sources","backups"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
   }
   function writeURL(replace=false) {
     const params = new URLSearchParams();
     for (const key of ["q","category","source","tag","offset","article"]) if (state[key]) params.set(key,state[key]);
     if (state.view === "feeds") {params.set("view","feeds"); if(state.feedStatus) params.set("status",state.feedStatus); if(state.feedOffset) params.set("feedOffset",state.feedOffset);}
-    if(["topics","sources"].includes(state.view)) params.set("view",state.view);
+    if(["topics","sources","backups"].includes(state.view)) params.set("view",state.view);
     if(state.topicLimit!==20) params.set("topicLimit",state.topicLimit);
     const url = location.pathname + (params.size ? "?" + params.toString() : "");
     history[replace ? "replaceState" : "pushState"](null,"",url);
@@ -62,12 +63,12 @@
     $("search").value=state.q; $("source").value=state.source; $("tag").value=state.tag;
     $("feed-filter").value=state.feedStatus;
     $("topics-limit").value=state.topicLimit;
-    for(const view of ["articles","topics","feeds","sources"]) {
+    for(const view of ["articles","topics","feeds","sources","backups"]) {
       $(view+"-section").hidden=state.view!==view;
       $("nav-"+view).classList.toggle("active",state.view===view);
       $("nav-"+view).setAttribute("aria-current",state.view===view ? "page" : "false");
     }
-    const views={sources:["Gerenciar feeds","Fontes do seu radar","Configure o que será acompanhado nas próximas coletas."],articles:["Artigos","Seu radar de ameaças","Notícias, pesquisas e indicadores em um só lugar."], feeds:["Coleta de feeds","Fontes sob observação","Acompanhe tentativas, sucessos e erros de cada fonte."], topics:["Tópicos","Assuntos em destaque","Explore os termos mais relevantes do seu arquivo."]};
+    const views={backups:["Backups","Seu histórico protegido","Gere e guarde cópias do seu arquivo de artigos."],sources:["Gerenciar feeds","Fontes do seu radar","Configure o que será acompanhado nas próximas coletas."],articles:["Artigos","Seu radar de ameaças","Notícias, pesquisas e indicadores em um só lugar."], feeds:["Coleta de feeds","Fontes sob observação","Acompanhe tentativas, sucessos e erros de cada fonte."], topics:["Tópicos","Assuntos em destaque","Explore os termos mais relevantes do seu arquivo."]};
     const [section,title,description]=views[state.view];
     $("breadcrumb-section").textContent=section;
     $("page-title").replaceChildren(document.createTextNode(title),element("span","","."));
@@ -178,6 +179,8 @@
   function loadView() {
     if(state.view!=="topics") topicController?.abort();
     if(state.view!=="sources") sourceController?.abort();
+    if(state.view!=="backups") {backupController?.abort();clearTimeout(backupTimer);}
+    if(state.view==="backups") return Promise.allSettled([loadBackups(),loadBackupStatus(false)]);
     if(state.view==="sources") return loadSources();
     return state.view==="topics" ? loadTopics() : (state.view==="feeds" ? loadFeeds() : loadArticles());
   }
@@ -266,6 +269,70 @@
       target.textContent=error.message==="Failed to fetch" ? "Não foi possível confirmar a alteração. Atualize a tela antes de tentar novamente." : error.message;target.hidden=false;
     } finally {sourceRequest=false;syncFeedActions();}
   }
+  const fileSize=(bytes)=>bytes<1048576 ? `${number.format(bytes/1024)} KB` : `${number.format(bytes/1048576)} MB`;
+  async function loadBackups() {
+    backupController?.abort();const controller=backupController=new AbortController();
+    $("backup-list").setAttribute("aria-busy","true");$("backups-message").hidden=true;
+    try {
+      const data=await request("/backups",controller.signal);if(controller!==backupController) return;
+      $("backups-summary").textContent=`${number.format(data.items.length)} ${data.items.length===1 ? "cópia local disponível" : "cópias locais disponíveis"}`;
+      $("backups-retention").textContent=`As últimas ${data.retention} cópias locais são mantidas, incluindo backups manuais e automáticos. Elas incluem artigos, estado da coleta e feeds gerenciados pela web.`;
+      $("backup-list").replaceChildren(...data.items.map(backup=>{
+        const card=element("article","backup-card"),top=element("div","backup-top"),name=element("div");
+        name.append(element("h3","",formatDate(backup.created_at,true)),element("p","backup-filename",backup.id));
+        const download=button("Baixar ZIP ↧","secondary-button",()=>downloadBackup(backup.id,download));download.disabled=!backup.downloadable;
+        top.append(name,download);card.append(top);
+        const metrics=element("div","backup-metrics");
+        for(const [label,value] of [["Artigos",backup.articles===null ? "—" : number.format(backup.articles)],["Feeds observados",backup.feeds===null ? "—" : number.format(backup.feeds)],["Tamanho do banco",fileSize(backup.size_bytes)]]) {const item=element("div");item.append(element("small","",label),element("strong","",value));metrics.append(item);}
+        card.append(metrics);if(backup.error) card.append(element("p","feed-form-error",backup.error));return card;
+      }));
+      if(!data.items.length) message("backups-message","Nenhum backup disponível","Gere sua primeira cópia pelo botão acima. Os backups automáticos também aparecerão aqui.");
+    } catch(error) {
+      if(error.name==="AbortError") return;
+      $("backup-list").replaceChildren();$("backups-summary").textContent="Lista indisponível";
+      message("backups-message","Não foi possível carregar os backups","Verifique a conexão e tente novamente.",loadBackups);
+    } finally {if(controller===backupController) $("backup-list").setAttribute("aria-busy","false");}
+  }
+  async function loadBackupStatus(refreshList=true) {
+    clearTimeout(backupTimer);
+    try {
+      const data=await request("/backups/status");
+      const finished=backupRunning && data.status!=="running";
+      backupRunning=data.status==="running";
+      $("create-backup").disabled=backupRunning || backupRequest;
+      $("create-backup").textContent=backupRunning ? "Gerando backup…" : "+ Gerar backup agora";
+      $("backup-status").classList.toggle("backup-error",data.status==="failed");
+      $("backup-status").textContent=backupRunning ? "Criando e verificando uma cópia. Você pode continuar usando a aplicação." : (data.status==="failed" ? data.error : (data.status==="completed" ? "Backup concluído. Baixe uma cópia para guardar fora do computador." : "Pronto para gerar um backup manual."));
+      if(state.view==="backups" && (finished || (refreshList && !backupRunning))) await loadBackups();
+    } catch(error) {
+      $("create-backup").disabled=true;$("backup-status").textContent="Não foi possível consultar o backup. Tentando novamente…";
+    }
+    if(state.view==="backups") backupTimer=setTimeout(loadBackupStatus,backupRunning ? 3000 : 15000);
+  }
+  async function createBackup() {
+    if(backupRequest || backupRunning) return;
+    backupRequest=true;$("create-backup").disabled=true;$("backups-notice").hidden=true;
+    try {
+      const response=await fetch("/backups",{method:"POST",headers:{"X-Cyber-RSS-Request":"1"}});
+      if(response.status!==409 && !response.ok) throw new Error(`HTTP ${response.status}`);
+      if(response.ok) backupRunning=true;
+    } catch(error) {
+      $("backups-notice").textContent="Não foi possível confirmar o pedido de backup. Confira o estado antes de tentar novamente.";$("backups-notice").hidden=false;
+    } finally {backupRequest=false;await loadBackupStatus();}
+  }
+  async function downloadBackup(id,control) {
+    control.disabled=true;control.textContent="Preparando ZIP…";$("backups-notice").hidden=true;
+    try {
+      const response=await fetch("/backups/"+encodeURIComponent(id)+"/download");
+      if(!response.ok) {
+        const data=await response.json();throw new Error(typeof data.detail==="string" ? data.detail : "Não foi possível baixar esta cópia.");
+      }
+      const url=URL.createObjectURL(await response.blob()),link=element("a");
+      link.href=url;link.download=id.replace(/\.sqlite3$/,".zip");document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    } catch(error) {
+      $("backups-notice").textContent=error.message==="Failed to fetch" ? "Não foi possível baixar o backup. Verifique a conexão e tente novamente." : error.message;$("backups-notice").hidden=false;
+    } finally {control.disabled=false;control.textContent="Baixar ZIP ↧";}
+  }
   function detailSection(title,values,kind="") {
     const section=element("section","detail-section");section.append(element("h3","",title));
     if(!values.length) {section.append(element("p","detail-empty","Nenhum registro neste artigo."));return section;}
@@ -346,6 +413,8 @@
   $("tag").addEventListener("change",()=>updateArticles({tag:$("tag").value.trim()}));
   $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:""}));
   $("all-categories").addEventListener("click",()=>updateArticles({category:""}));
+  $("nav-backups").addEventListener("click",()=>navigate("backups"));
+  $("create-backup").addEventListener("click",createBackup);
   $("nav-sources").addEventListener("click",()=>navigate("sources"));
   $("sources-filter").addEventListener("change",renderSources);
   $("add-feed").addEventListener("click",()=>openFeed());
