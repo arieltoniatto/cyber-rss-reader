@@ -19,7 +19,7 @@ class ConfigLoader:
     def __init__(self, feeds_directory: Path):
         self.feeds_directory = feeds_directory
 
-    def load(self) -> FeedConfiguration:
+    def load(self, *, include_disabled: bool = False) -> FeedConfiguration:
         if not self.feeds_directory.exists():
             raise FeedDirectoryNotFound(
                 f"Directory not found: {self.feeds_directory}"
@@ -33,7 +33,7 @@ class ConfigLoader:
         categories: list[FeedCategory] = []
 
         for file in sorted(self.feeds_directory.glob("*.yaml")):
-            categories.append(self._load_category(file))
+            categories.append(self._load_category(file, include_disabled=include_disabled))
 
         self._validate_duplicates(categories)
 
@@ -42,11 +42,11 @@ class ConfigLoader:
             categories=categories,
         )
 
-    def _load_category(self, file: Path) -> FeedCategory:
+    def _load_category(self, file: Path, *, include_disabled: bool = False) -> FeedCategory:
         try:
             with file.open("r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
- 
+
             category = FeedCategory.model_validate(raw)
 
             category.feeds = [
@@ -56,10 +56,10 @@ class ConfigLoader:
                     }
                 )
                 for feed in category.feeds
-                if feed.enabled
+                if include_disabled or feed.enabled
             ]
 
-            
+
             return category
 
         except ValidationError as exc:

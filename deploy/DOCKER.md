@@ -140,3 +140,13 @@ copy snapshot/manifest pairs elsewhere if you need protection against disk loss.
 References: [Compose readiness dependencies](https://docs.docker.com/compose/how-tos/startup-order/),
 [Docker local port publishing](https://docs.docker.com/engine/network/port-publishing/),
 and [persistent volumes](https://docs.docker.com/engine/storage/volumes/).
+
+### Feed management
+
+Use **Gerenciar feeds** in the web interface to add, edit or disable sources.
+The managed configuration is stored inside the SQLite archive on `archive`, so
+rebuilding the image preserves it and SQLite snapshots include it. The first
+edit copies the configured YAML feeds, including disabled ones; subsequent YAML
+changes in an image do not override this archive's managed configuration.
+Changes apply to the next collection. Rebuild and recreate all services when
+upgrading so the periodic worker also reloads managed feeds each cycle.

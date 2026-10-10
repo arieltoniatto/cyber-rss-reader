@@ -11,7 +11,7 @@ from config.paths import (
     THREAT_ACTOR_CATALOG_FILE,
 )
 from config.loader import ConfigLoader
-from config.models import FeedConfiguration
+from config.feed_registry import FeedRegistry
 from enrichment.pipeline import EnrichmentPipeline
 from enrichment.tag_enricher import TagEnricher
 from enrichment.ioc_enricher import IOCEnricher
@@ -54,21 +54,18 @@ class ApplicationContainer:
         logger.info("Loading configuration...")
 
         ################################################################
-        # Configuration
-        ################################################################
-
-        self.configuration: FeedConfiguration = ConfigLoader(
-            config_directory,
-        ).load()
-
-        ################################################################
-        # Infrastructure
+        # Configuration and infrastructure
         ################################################################
 
         self.repository: ArticleRepository = (
             JsonArticleRepository(cache_file, cache_duration) if cache_file is not None
             else SQLiteArticleRepository(database_file, cache_duration)
         )
+
+        self.feed_registry = (FeedRegistry(database_file, config_directory)
+                              if isinstance(self.repository, SQLiteArticleRepository) else None)
+        self.configuration = (self.feed_registry.configuration() if self.feed_registry is not None
+                              else ConfigLoader(config_directory).load())
 
         self.fetcher = RSSFetcher(
             self.configuration,
@@ -127,6 +124,7 @@ class ApplicationContainer:
             fetcher=self.fetcher,
             parser=self.parser,
             enrichment_pipeline=self.enrichment_pipeline,
+            configuration_loader=self.feed_registry.configuration if self.feed_registry else None,
         )
 
         self.search_service = SearchService(

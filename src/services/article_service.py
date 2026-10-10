@@ -34,12 +34,14 @@ class ArticleService:
         fetcher: RSSFetcher,
         parser: RSSParser,
         enrichment_pipeline: EnrichmentPipeline,
+        configuration_loader=None,
     ) -> None:
 
         self._repository = repository
         self._fetcher = fetcher
         self._parser = parser
         self._enrichment_pipeline = enrichment_pipeline
+        self._configuration_loader = configuration_loader
 
     def _available_categories(
             self,
@@ -110,6 +112,9 @@ class ArticleService:
         When the cache is valid and force_refresh is False, cached articles
         are returned without downloading or enriching feeds.
         """
+
+        if self._configuration_loader is not None:
+            self._fetcher.configuration = self._configuration_loader()
 
         if (
             not force_refresh

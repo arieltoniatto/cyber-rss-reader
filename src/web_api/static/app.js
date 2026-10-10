@@ -7,7 +7,8 @@
   const scores = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:3});
   const dates = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"short", year:"numeric"});
   const timestamps = new Intl.DateTimeFormat("pt-BR", {dateStyle:"short", timeStyle:"short"});
-  let state = readURL(), articleController, detailController, feedController, topicController;
+  let state = readURL(), articleController, detailController, feedController, topicController, sourceController;
+  let configuredFeeds=[], editingFeed=null, sourceRequest=false;
   let collectionTimer, collectionWasRunning=false, collectionRequest=false;
   let facets = {categories:[], sources:[], tags:[], total:0};
   const categoryName = (value) => labels[value] || value;
@@ -19,13 +20,13 @@
     const params = new URLSearchParams(location.search);
     const q = (params.get("q") || "").slice(0,500);
     const offset = Math.max(0, Math.floor(Number(params.get("offset")) || 0));
-    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
+    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics","sources"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
   }
   function writeURL(replace=false) {
     const params = new URLSearchParams();
     for (const key of ["q","category","source","tag","offset","article"]) if (state[key]) params.set(key,state[key]);
     if (state.view === "feeds") {params.set("view","feeds"); if(state.feedStatus) params.set("status",state.feedStatus); if(state.feedOffset) params.set("feedOffset",state.feedOffset);}
-    if(state.view==="topics") params.set("view","topics");
+    if(["topics","sources"].includes(state.view)) params.set("view",state.view);
     if(state.topicLimit!==20) params.set("topicLimit",state.topicLimit);
     const url = location.pathname + (params.size ? "?" + params.toString() : "");
     history[replace ? "replaceState" : "pushState"](null,"",url);
@@ -61,12 +62,12 @@
     $("search").value=state.q; $("source").value=state.source; $("tag").value=state.tag;
     $("feed-filter").value=state.feedStatus;
     $("topics-limit").value=state.topicLimit;
-    for(const view of ["articles","topics","feeds"]) {
+    for(const view of ["articles","topics","feeds","sources"]) {
       $(view+"-section").hidden=state.view!==view;
       $("nav-"+view).classList.toggle("active",state.view===view);
       $("nav-"+view).setAttribute("aria-current",state.view===view ? "page" : "false");
     }
-    const views={articles:["Artigos","Seu radar de ameaças","Notícias, pesquisas e indicadores em um só lugar."], feeds:["Coleta de feeds","Fontes sob observação","Acompanhe tentativas, sucessos e erros de cada fonte."], topics:["Tópicos","Assuntos em destaque","Explore os termos mais relevantes do seu arquivo."]};
+    const views={sources:["Gerenciar feeds","Fontes do seu radar","Configure o que será acompanhado nas próximas coletas."],articles:["Artigos","Seu radar de ameaças","Notícias, pesquisas e indicadores em um só lugar."], feeds:["Coleta de feeds","Fontes sob observação","Acompanhe tentativas, sucessos e erros de cada fonte."], topics:["Tópicos","Assuntos em destaque","Explore os termos mais relevantes do seu arquivo."]};
     const [section,title,description]=views[state.view];
     $("breadcrumb-section").textContent=section;
     $("page-title").replaceChildren(document.createTextNode(title),element("span","","."));
@@ -176,6 +177,8 @@
   }
   function loadView() {
     if(state.view!=="topics") topicController?.abort();
+    if(state.view!=="sources") sourceController?.abort();
+    if(state.view==="sources") return loadSources();
     return state.view==="topics" ? loadTopics() : (state.view==="feeds" ? loadFeeds() : loadArticles());
   }
   async function loadTopics() {
@@ -202,6 +205,66 @@
     } finally {
       if(controller===topicController) {$("topic-list").setAttribute("aria-busy","false");$("topic-list").classList.remove("loading");}
     }
+  }
+  function renderSources() {
+    const filter=$("sources-filter").value;
+    const rows=configuredFeeds.filter(feed=>!filter || feed.enabled===(filter==="enabled"));
+    $("source-list").replaceChildren(...rows.map(feed=>{
+      const card=element("article","feed-card"),top=element("div","feed-top"),name=element("div");
+      name.append(element("h3","",feed.name),element("div","feed-url",feed.url));
+      top.append(name,element("span","pill "+(feed.enabled ? "badge-success" : ""),feed.enabled ? "Ativado" : "Desativado"));
+      const actions=element("div","source-actions");actions.append(element("span","pill",categoryName(feed.category)),button("Editar","secondary-button feed-manage-action",()=>openFeed(feed)),button(feed.enabled ? "Desativar" : "Ativar","secondary-button feed-manage-action",()=>saveFeed({...feed,enabled:!feed.enabled},false)));
+      card.append(top);if(feed.description) card.append(element("p","source-description",feed.description));card.append(actions);return card;
+    }));
+    $("sources-message").hidden=true;
+    if(!rows.length) message("sources-message","Nenhum feed nesta seleção","Escolha outro estado ou adicione uma fonte.");
+    syncFeedActions();
+  }
+  function syncFeedActions() {
+    document.querySelectorAll(".feed-manage-action").forEach(node=>{node.disabled=collectionWasRunning || sourceRequest;});
+  }
+  async function loadSources() {
+    sourceController?.abort();const controller=sourceController=new AbortController();
+    $("source-list").setAttribute("aria-busy","true");$("sources-message").hidden=true;
+    try {
+      const data=await request("/feed-config",controller.signal);
+      if(controller!==sourceController) return;
+      configuredFeeds=data.items;
+      $("sources-summary").textContent=`${number.format(data.total)} feeds · ${number.format(data.enabled)} ativados · ${number.format(data.total-data.enabled)} desativados`;
+      $("feed-category-options").replaceChildren(...data.categories.map(value=>{const option=element("option");option.value=value;return option;}));
+      renderSources();
+    } catch(error) {
+      if(error.name==="AbortError") return;
+      $("source-list").replaceChildren();$("sources-summary").textContent="Configuração indisponível";
+      message("sources-message","Não foi possível carregar a configuração","Verifique a conexão e tente novamente.",loadSources);
+    } finally {if(controller===sourceController) $("source-list").setAttribute("aria-busy","false");}
+  }
+  function openFeed(feed=null) {
+    editingFeed=feed;$("feed-form").reset();$("feed-form-error").hidden=true;
+    $("feed-dialog-title").textContent=feed ? "Editar feed" : "Adicionar feed";
+    $("feed-name").value=feed?.name || "";$("feed-url").value=feed?.url || "";
+    $("feed-category").value=feed?.category || "news";$("feed-description").value=feed?.description || "";
+    $("feed-enabled").checked=feed?.enabled ?? true;
+    $("feed-dialog").showModal();$("feed-name").focus();
+  }
+  async function saveFeed(feed,fromForm=true) {
+    if(sourceRequest) return;
+    sourceRequest=true;syncFeedActions();
+    const {id,...values}=feed;
+    $("feed-form-error").hidden=true;$("sources-notice").hidden=true;
+    try {
+      const response=await fetch(id ? "/feed-config/"+encodeURIComponent(id) : "/feed-config",{method:id ? "PUT" : "POST",headers:{"Content-Type":"application/json","X-Cyber-RSS-Request":"1"},body:JSON.stringify(values)});
+      if(!response.ok) {
+        const data=await response.json();
+        throw new Error(typeof data.detail==="string" ? data.detail : "Verifique o nome, a URL e a categoria do feed.");
+      }
+      if(fromForm) $("feed-dialog").close();
+      $("sources-notice").textContent="Feed salvo. A configuração será usada na próxima coleta; o histórico foi preservado.";$("sources-notice").hidden=false;
+      await loadSources();
+    } catch(error) {
+      const target=fromForm ? $("feed-form-error") : $("sources-notice");
+      target.textContent=error.message==="Failed to fetch" ? "Não foi possível confirmar a alteração. Atualize a tela antes de tentar novamente." : error.message;target.hidden=false;
+    } finally {sourceRequest=false;syncFeedActions();}
   }
   function detailSection(title,values,kind="") {
     const section=element("section","detail-section");section.append(element("h3","",title));
@@ -236,7 +299,7 @@
     try {
       const data=await request("/collection");
       const running=data.status==="running", finished=collectionWasRunning && !running;
-      collectionWasRunning=running;
+      collectionWasRunning=running;syncFeedActions();
       $("collect-now").disabled=running || collectionRequest;
       $("force-refresh").disabled=running || collectionRequest;
       $("collect-now").textContent=running ? "Coleta em andamento…" : "↻ Coletar agora";
@@ -283,6 +346,12 @@
   $("tag").addEventListener("change",()=>updateArticles({tag:$("tag").value.trim()}));
   $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:""}));
   $("all-categories").addEventListener("click",()=>updateArticles({category:""}));
+  $("nav-sources").addEventListener("click",()=>navigate("sources"));
+  $("sources-filter").addEventListener("change",renderSources);
+  $("add-feed").addEventListener("click",()=>openFeed());
+  $("close-feed").addEventListener("click",()=>$("feed-dialog").close());
+  $("cancel-feed").addEventListener("click",()=>$("feed-dialog").close());
+  $("feed-form").addEventListener("submit",event=>{event.preventDefault();saveFeed({...(editingFeed ? {id:editingFeed.id} : {}),name:$("feed-name").value.trim(),url:$("feed-url").value.trim(),category:$("feed-category").value.trim(),description:$("feed-description").value.trim() || null,enabled:$("feed-enabled").checked});});
   $("nav-topics").addEventListener("click",()=>navigate("topics"));
   $("topics-limit").addEventListener("change",()=>{state.topicLimit=Number($("topics-limit").value);writeURL();loadTopics();});
   $("nav-articles").addEventListener("click",()=>navigate("articles"));$("nav-feeds").addEventListener("click",()=>navigate("feeds"));$("stat-errors-button").addEventListener("click",()=>navigate("feeds","error"));

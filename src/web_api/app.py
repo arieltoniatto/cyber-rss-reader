@@ -10,8 +10,11 @@ from typing import Literal
 from collections import Counter
 
 from fastapi import FastAPI, Query, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, StrictBool
-from app.worker import CollectorBusy
+from pydantic import BaseModel, ConfigDict, StrictBool, Field, HttpUrl, field_validator
+from app.worker import CollectorBusy, collector_lock
+from app.container import ApplicationContainer
+from config.feed_registry import FeedRegistry, FeedConflict, FeedNotFound
+from config.paths import FEED_DIRECTORY
 from web_api.collection import CollectionController
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,16 +36,42 @@ class CollectionRequest(BaseModel):
     force_refresh: StrictBool = True
 
 
+class FeedInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=200)
+    url: HttpUrl = Field(max_length=2048)
+    category: str = Field(pattern=r'^[a-z][a-z0-9_]{0,63}$')
+    description: str | None = Field(default=None, max_length=2000)
+    enabled: StrictBool = True
+
+    @field_validator('url')
+    @classmethod
+    def no_credentials(cls, value):
+        if value.username or value.password:
+            raise ValueError('Use a URL without embedded credentials')
+        return value
+
+
+def require_action(request: Request):
+    if (request.headers.get('x-cyber-rss-request') != '1' or
+            request.headers.get('sec-fetch-site') == 'cross-site'):
+        raise HTTPException(status_code=403, detail='Use a same-origin action request')
+
+
 def create_app(repository: ArticleRepository | None = None, *,
                database_file: Path = ARTICLE_DATABASE_FILE,
                security: SecuritySettings | None = None,
-               collection_service_factory=None) -> FastAPI:
+               collection_service_factory=None,
+               feed_directory: Path = FEED_DIRECTORY) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
                                 await run_in_threadpool(SQLiteArticleRepository, database_file))
         archive = getattr(app.state.repository, 'database_file', database_file)
-        app.state.collection = CollectionController(archive, collection_service_factory)
+        app.state.feed_registry = FeedRegistry(archive, feed_directory)
+        app.state.collection = CollectionController(archive, collection_service_factory or (
+            lambda: ApplicationContainer(
+                database_file=archive, config_directory=feed_directory).article_service))
         try:
             yield
         finally:
@@ -65,6 +94,33 @@ def create_app(repository: ArticleRepository | None = None, *,
     def serialize(article):
         return {"id": article_key(article), **article_to_dict(article)}
 
+    @app.get('/feed-config')
+    def feed_config(response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        rows = app.state.feed_registry.list()
+        return {'items': rows, 'categories': sorted({row['category'] for row in rows}),
+                'enabled': sum(row['enabled'] for row in rows), 'total': len(rows)}
+
+    def save_feed(body: FeedInput, request: Request, feed_id: str | None = None):
+        require_action(request)
+        try:
+            with collector_lock(app.state.feed_registry.database_file):
+                return app.state.feed_registry.save(body.model_dump(mode='json'), feed_id=feed_id)
+        except CollectorBusy:
+            raise HTTPException(status_code=409, detail='Aguarde a coleta terminar antes de alterar os feeds.')
+        except FeedConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        except FeedNotFound:
+            raise HTTPException(status_code=404, detail='Feed não encontrado.')
+
+    @app.post('/feed-config', status_code=201)
+    def add_feed(body: FeedInput, request: Request):
+        return save_feed(body, request)
+
+    @app.put('/feed-config/{feed_id}')
+    def edit_feed(feed_id: str, body: FeedInput, request: Request):
+        return save_feed(body, request, feed_id)
+
     @app.get('/collection')
     def collection_status(response: Response):
         response.headers['Cache-Control'] = 'no-store'
@@ -74,9 +130,7 @@ def create_app(repository: ArticleRepository | None = None, *,
     def collect_now(body: CollectionRequest, request: Request):
         # A custom header prevents HTML forms and cross-origin browser requests
         # from starting a collection. Cross-origin preflights are not enabled.
-        if (request.headers.get('x-cyber-rss-request') != '1' or
-                request.headers.get('sec-fetch-site') == 'cross-site'):
-            raise HTTPException(status_code=403, detail='Use a same-origin collection request')
+        require_action(request)
         try:
             return app.state.collection.start(force_refresh=body.force_refresh)
         except CollectorBusy:

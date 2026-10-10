@@ -624,6 +624,9 @@ runs outside the HTTP event loop, following the
 | `GET /filters` | Available categories, sources and tags from the full archive |
 | `GET /articles/detail?id=...` | Article details by stable ID |
 | `GET /health` | Check archive access |
+| `GET /feed-config` | Configured sources, including disabled feeds |
+| `POST /feed-config` | Add a source for future collection |
+| `PUT /feed-config/{feed_id}` | Edit or enable/disable a source |
 | `GET /collection` | Manual collection result or active automatic cycle |
 | `POST /collection` | Start background collection, with an explicit intent header |
 | `GET /feeds` | Per-feed collection status, optional `status`, `limit`, `offset` |
@@ -648,6 +651,25 @@ malware, and threat actors. Filters come from the complete archive, including
 sources that no longer appear in current feed observations. Search can be
 combined with an exact tag filter. Browser URLs preserve filters and pagination,
 and the article dialog supports direct links, Escape, and keyboard focus.
+
+The **Gerenciar feeds** section lists configured sources, including disabled
+ones. Add a source, edit its name/URL/category/description, or activate/deactivate
+it without editing packaged files. HTTP/HTTPS URLs, unique names and URLs, and
+category identifiers are validated. Changes are blocked during collection and
+use the same intent header/authentication as manual collection. Changes take
+effect on the next collection and invalidate the six-hour cache.
+
+Before the first web edit, configuration comes from the YAML files. The first
+edit saves a complete snapshot (including disabled feeds) under `managed_feeds`
+in the archive's SQLite metadata. This snapshot then takes precedence over YAML
+for this archive; edits to packaged YAML no longer change its managed sources.
+The CLI, periodic worker and manual web collector reload this snapshot before
+each update. JSON-cache mode continues to use YAML. Configuration survives API
+restarts, Docker recreation, and existing SQLite backup/restore operations.
+Disabling or changing a URL preserves article history and previous collection
+observations; the collection-status view can still show the last error of a
+source that has since been disabled. Source management does not delete history
+or start a collection automatically. Restart both API and worker after upgrading.
 
 The **Tópicos** section ranks terms from the entire archive using the existing
 `/topics` endpoint. Select 10, 20, 50 or 100 terms; the selection and view are

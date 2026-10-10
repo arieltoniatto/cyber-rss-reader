@@ -19,6 +19,7 @@
         <button id="nav-articles" class="nav-button active" type="button"><span aria-hidden="true">▤</span> Artigos <span class="nav-dot"></span></button>
         <button id="nav-topics" class="nav-button" type="button"><span aria-hidden="true">◇</span> Tópicos <span class="nav-dot"></span></button>
         <button id="nav-feeds" class="nav-button" type="button"><span aria-hidden="true">◉</span> Coleta de feeds <span id="nav-errors" class="error-count" hidden></span></button>
+        <button id="nav-sources" class="nav-button" type="button"><span aria-hidden="true">⚙</span> Gerenciar feeds <span class="nav-dot"></span></button>
       </nav>
       <div class="category-heading"><p class="nav-label">CATEGORIAS</p><button id="all-categories" class="text-button" type="button">Todas</button></div>
       <nav id="categories" class="categories" aria-label="Categorias de artigos"></nav>
@@ -47,6 +48,13 @@
           <div id="article-list" class="article-list" aria-live="polite" aria-busy="false"></div>
           <div id="article-pagination" class="pagination"><button id="previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="page-number">Página 1</span><button id="next" class="secondary-button" type="button" disabled>Próxima →</button></div>
         </section>
+        <section id="sources-section" aria-label="Configuração dos feeds" hidden>
+          <div class="sources-toolbar"><div><h2>Suas fontes</h2><p id="sources-summary">Carregando configuração…</p></div><button id="add-feed" class="primary-button feed-manage-action" type="button">+ Adicionar feed</button></div>
+          <div class="sources-filters"><label for="sources-filter">Mostrar <select id="sources-filter"><option value="">Todos os feeds</option><option value="enabled">Ativados</option><option value="disabled">Desativados</option></select></label><p>As alterações valem para a próxima coleta. Desativar preserva os artigos já coletados.</p></div>
+          <p id="sources-notice" class="sources-notice" role="status" hidden></p>
+          <div id="sources-message" class="empty-state" role="status" hidden></div>
+          <div id="source-list" class="source-list" aria-live="polite" aria-busy="false"></div>
+        </section>
         <section id="topics-section" aria-label="Tópicos do arquivo" hidden>
           <div class="topics-toolbar"><div><h2>Termos mais relevantes</h2><p>Calculados sobre todos os artigos do arquivo, sem os filtros da busca.</p></div><label for="topics-limit">Quantidade <select id="topics-limit"><option value="10">10 tópicos</option><option value="20" selected>20 tópicos</option><option value="50">50 tópicos</option><option value="100">100 tópicos</option></select></label></div>
           <p class="topics-note">A relevância compara os termos neste arquivo. Ela não indica crescimento recente ou gravidade de uma ameaça. Clique em um tópico para buscar artigos.</p>
@@ -64,6 +72,9 @@
       </main>
     </div>
   </div>
+  <dialog id="feed-dialog" aria-labelledby="feed-dialog-title"><div class="dialog-top"><h2 id="feed-dialog-title">Adicionar feed</h2><button id="close-feed" class="icon-button" type="button" aria-label="Fechar configuração do feed">×</button></div>
+    <form id="feed-form" class="feed-form"><label for="feed-name">Nome<input id="feed-name" required maxlength="200" autocomplete="off"></label><label for="feed-url">URL do feed<input id="feed-url" type="url" required maxlength="2048" placeholder="https://exemplo.com/feed/" autocomplete="off"></label><label for="feed-category">Categoria<input id="feed-category" required maxlength="64" pattern="[a-z][a-z0-9_]{0,63}" list="feed-category-options" placeholder="news" autocomplete="off"><small>Use letras minúsculas, números e sublinhado. Exemplo: threat_hunting.</small><datalist id="feed-category-options"></datalist></label><label for="feed-description">Descrição<textarea id="feed-description" rows="3" maxlength="2000"></textarea></label><label class="collection-option" for="feed-enabled"><input id="feed-enabled" type="checkbox" checked> Incluir nas próximas coletas</label><p id="feed-form-error" class="feed-form-error" role="alert" hidden></p><div class="feed-form-actions"><button id="save-feed" class="primary-button feed-manage-action" type="submit">Salvar feed</button><button id="cancel-feed" class="secondary-button" type="button">Cancelar</button></div></form>
+  </dialog>
   <dialog id="article-dialog" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">DETALHES DO ARTIGO</span><button id="close-detail" class="icon-button" type="button" aria-label="Fechar detalhes">×</button></div><div id="detail-content"></div></dialog>
 </body>
 </html>
