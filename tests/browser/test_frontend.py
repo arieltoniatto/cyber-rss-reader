@@ -221,3 +221,98 @@ def test_manual_collection_controls_and_result(page, outcome):
                 'cached': 'O arquivo ainda está atualizado', 'failed': 'A coleta falhou'}
     expect(page.locator('#collection-status')).to_contain_text(expected[outcome])
     expect(page.locator('.article-card')).to_have_count(20)
+
+
+def test_topics_limits_reload_history_and_search(page, frontend_server):
+    page.goto(frontend_server + '/?view=topics&topicLimit=10&category=news&source=Source+B&tag=missing')
+    expect(page.locator('#topic-list')).to_have_attribute('aria-busy', 'false')
+    expect(page.locator('.topic-card')).to_have_count(10)
+    expect(page.locator('#topics-limit')).to_have_value('10')
+    expect(page.locator('#nav-topics')).to_have_attribute('aria-current', 'page')
+    expect(page.locator('#articles-section')).not_to_be_visible()
+    with page.expect_response(lambda response: '/topics?limit=50' in response.url):
+        page.locator('#topics-limit').select_option('50')
+    expect(page.locator('#topic-list')).to_have_attribute('aria-busy', 'false')
+    assert 10 < page.locator('.topic-card').count() <= 50
+    page.reload()
+    expect(page.locator('#topics-limit')).to_have_value('50')
+    expect(page.locator('#topic-list')).to_have_attribute('aria-busy', 'false')
+    term = page.locator('.topic-term').first.inner_text()
+    page.locator('.topic-card').first.click()
+    expect(page.locator('#search')).to_have_value(term)
+    expect(page.locator('#source')).to_have_value('')
+    expect(page.locator('#tag')).to_have_value('')
+    expect(page.locator('#active-category')).not_to_be_visible()
+    expect(page.locator('#nav-articles')).to_have_attribute('aria-current', 'page')
+    expect(page.locator('#article-list')).to_have_attribute('aria-busy', 'false')
+    assert page.locator('.article-card').count() > 0
+    page.go_back()
+    expect(page.locator('#topics-section')).to_be_visible()
+    expect(page.locator('#topics-limit')).to_have_value('50')
+
+
+def test_topics_empty_failure_retry_and_untrusted_text(page):
+    page.route('**/topics?*', lambda route: route.fulfill(status=503, body='Unavailable'))
+    page.locator('#nav-topics').click()
+    expect(page.locator('#topics-message')).to_contain_text('Não foi possível carregar os tópicos')
+    page.unroute('**/topics?*')
+    page.route('**/topics?*', lambda route: route.fulfill(json={'items': []}))
+    page.locator('#topics-message').get_by_role('button', name='Tentar novamente').click()
+    expect(page.locator('#topics-message')).to_contain_text('Nenhum tópico disponível')
+    expect(page.locator('.topic-card')).to_have_count(0)
+    page.unroute('**/topics?*')
+    page.route('**/topics?*', lambda route: route.fulfill(json={'items': [
+        {'topic': '<img src=x onerror="window.__topic_xss=1">', 'score': 1.2, 'frequency': 3}]}))
+    page.locator('#refresh').click()
+    expect(page.locator('.topic-card')).to_have_count(1)
+    expect(page.locator('.topic-term')).to_contain_text('<img')
+    expect(page.locator('#topic-list img, #topic-list script')).to_have_count(0)
+    assert page.evaluate('window.__topic_xss') is None
+
+
+def test_topics_mobile_layout_and_invalid_limit(page, frontend_server):
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(frontend_server + '/?view=topics&topicLimit=-1')
+    expect(page.locator('#topics-limit')).to_have_value('20')
+    expect(page.locator('#topic-list')).to_have_attribute('aria-busy', 'false')
+    page.wait_for_timeout(250)  # Finish the responsive sidebar transition.
+    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+    page.get_by_role('button', name='Abrir navegação').click()
+    page.locator('#nav-articles').click()
+    page.get_by_role('button', name='Abrir navegação').click()
+    page.locator('#nav-topics').click()
+    expect(page.locator('#menu-toggle')).to_have_attribute('aria-expanded', 'false')
+    expect(page.locator('#topic-list')).to_have_attribute('aria-busy', 'false')
+    assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+    page.screenshot(path='logs/topics-mobile.png')
+
+
+def test_topics_refresh_after_collection_finishes(page):
+    running = False
+    checks = 0
+    topic_requests = []
+    def topics(route):
+        topic_requests.append(route.request.url)
+        route.fulfill(json={'items': [{'topic': 'new topic' if checks > 1 else 'old topic',
+                                      'score': 2.0, 'frequency': 1}]})
+    def collection(route):
+        nonlocal running, checks
+        if route.request.method == 'POST':
+            running = True
+            route.fulfill(status=202, json={'status': 'running'})
+        elif running:
+            checks += 1
+            route.fulfill(json={'status': 'running', 'source': 'manual'} if checks == 1 else {
+                'status': 'completed', 'result': {'cache_used': False, 'feeds_downloaded': 1,
+                                               'feeds_failed': 0, 'articles_saved': 1}})
+        else:
+            route.fulfill(json={'status': 'idle'})
+    page.route('**/topics?*', topics)
+    page.route('**/collection', collection)
+    page.locator('#nav-topics').click()
+    expect(page.locator('.topic-term')).to_have_text('old topic')
+    page.locator('#refresh').click()
+    expect(page.locator('#collect-now')).to_be_enabled()
+    page.locator('#collect-now').click()
+    expect(page.locator('.topic-term')).to_have_text('new topic', timeout=10000)
+    assert len(topic_requests) >= 2

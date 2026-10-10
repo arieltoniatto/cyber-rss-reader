@@ -17,6 +17,7 @@
       <p class="nav-label">WORKSPACE</p>
       <nav class="main-nav" aria-label="Seções">
         <button id="nav-articles" class="nav-button active" type="button"><span aria-hidden="true">▤</span> Artigos <span class="nav-dot"></span></button>
+        <button id="nav-topics" class="nav-button" type="button"><span aria-hidden="true">◇</span> Tópicos <span class="nav-dot"></span></button>
         <button id="nav-feeds" class="nav-button" type="button"><span aria-hidden="true">◉</span> Coleta de feeds <span id="nav-errors" class="error-count" hidden></span></button>
       </nav>
       <div class="category-heading"><p class="nav-label">CATEGORIAS</p><button id="all-categories" class="text-button" type="button">Todas</button></div>
@@ -45,6 +46,13 @@
           <div id="articles-message" class="empty-state" role="status" hidden></div>
           <div id="article-list" class="article-list" aria-live="polite" aria-busy="false"></div>
           <div id="article-pagination" class="pagination"><button id="previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="page-number">Página 1</span><button id="next" class="secondary-button" type="button" disabled>Próxima →</button></div>
+        </section>
+        <section id="topics-section" aria-label="Tópicos do arquivo" hidden>
+          <div class="topics-toolbar"><div><h2>Termos mais relevantes</h2><p>Calculados sobre todos os artigos do arquivo, sem os filtros da busca.</p></div><label for="topics-limit">Quantidade <select id="topics-limit"><option value="10">10 tópicos</option><option value="20" selected>20 tópicos</option><option value="50">50 tópicos</option><option value="100">100 tópicos</option></select></label></div>
+          <p class="topics-note">A relevância compara os termos neste arquivo. Ela não indica crescimento recente ou gravidade de uma ameaça. Clique em um tópico para buscar artigos.</p>
+          <p id="topics-summary" class="topics-summary" role="status">Preparando tópicos…</p>
+          <div id="topics-message" class="empty-state" role="status" hidden></div>
+          <div id="topic-list" class="topic-list" aria-live="polite" aria-busy="false"></div>
         </section>
         <section id="feeds-section" aria-label="Estado de coleta dos feeds" hidden>
           <div class="feeds-toolbar"><div><h2>Fontes monitoradas</h2><p>O último resultado de cada feed, sem perder o histórico.</p></div><label>Estado <select id="feed-filter"><option value="">Todos os estados</option><option value="success">Com sucesso</option><option value="error">Com erro</option><option value="collecting">Coletando</option></select></label></div>

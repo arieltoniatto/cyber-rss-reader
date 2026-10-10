@@ -643,11 +643,21 @@ Python package and uses the same origin as the API; no Node build, CDN, external
 fonts, or additional web server is required.
 
 The responsive interface provides paginated articles, fuzzy text search,
-category/source/tag filters, and article details with summary, tags, IOCs,
+category/source/tag filters, a topics view, and article details with summary, tags, IOCs,
 malware, and threat actors. Filters come from the complete archive, including
 sources that no longer appear in current feed observations. Search can be
 combined with an exact tag filter. Browser URLs preserve filters and pagination,
 and the article dialog supports direct links, Escape, and keyboard focus.
+
+The **Tópicos** section ranks terms from the entire archive using the existing
+`/topics` endpoint. Select 10, 20, 50 or 100 terms; the selection and view are
+preserved in the URL (for example, `/?view=topics&topicLimit=50`). Scores express
+relative relevance within the archive, not recent growth or threat severity.
+Click a term to search articles with the previous category/source/tag filters
+cleared. Topics load only when their section is opened and recalculate when
+refreshed or after an observed collection completes. Loading, empty results,
+connection failures and retry are supported. The ranking uses titles and feed
+summaries rather than full article bodies.
 
 The feed view shows errors, latest attempts/successes, successful article counts,
 and collection warnings. **Atualizar tela** reloads the archive and feed state;

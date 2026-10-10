@@ -4,9 +4,10 @@
   const limit = 20;
   const labels = {apt:"APT", detection:"Detecção", dfir:"DFIR", exploit:"Exploits", government:"Governo", malware:"Malware", news:"Notícias", osint:"OSINT", podcasts:"Podcasts", threat_hunting:"Threat hunting", threat_intelligence:"Threat intelligence", vendors:"Fornecedores", vulnerability:"Vulnerabilidades"};
   const number = new Intl.NumberFormat("pt-BR");
+  const scores = new Intl.NumberFormat("pt-BR", {maximumFractionDigits:3});
   const dates = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"short", year:"numeric"});
   const timestamps = new Intl.DateTimeFormat("pt-BR", {dateStyle:"short", timeStyle:"short"});
-  let state = readURL(), articleController, detailController, feedController;
+  let state = readURL(), articleController, detailController, feedController, topicController;
   let collectionTimer, collectionWasRunning=false, collectionRequest=false;
   let facets = {categories:[], sources:[], tags:[], total:0};
   const categoryName = (value) => labels[value] || value;
@@ -18,12 +19,14 @@
     const params = new URLSearchParams(location.search);
     const q = (params.get("q") || "").slice(0,500);
     const offset = Math.max(0, Math.floor(Number(params.get("offset")) || 0));
-    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:params.get("view") === "feeds" ? "feeds" : "articles", feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
+    return {q, category:(params.get("category") || "").slice(0,200), source:(params.get("source") || "").slice(0,200), tag:(params.get("tag") || "").slice(0,200), offset:Math.min(q ? 10000 : 1000000, offset), view:["feeds","topics"].includes(params.get("view")) ? params.get("view") : "articles", topicLimit:[10,20,50,100].includes(Number(params.get("topicLimit"))) ? Number(params.get("topicLimit")) : 20, feedStatus:["success","error","collecting"].includes(params.get("status")) ? params.get("status") : "", feedOffset:Math.min(1000000, Math.max(0, Math.floor(Number(params.get("feedOffset")) || 0))), article:params.get("article") || ""};
   }
   function writeURL(replace=false) {
     const params = new URLSearchParams();
     for (const key of ["q","category","source","tag","offset","article"]) if (state[key]) params.set(key,state[key]);
     if (state.view === "feeds") {params.set("view","feeds"); if(state.feedStatus) params.set("status",state.feedStatus); if(state.feedOffset) params.set("feedOffset",state.feedOffset);}
+    if(state.view==="topics") params.set("view","topics");
+    if(state.topicLimit!==20) params.set("topicLimit",state.topicLimit);
     const url = location.pathname + (params.size ? "?" + params.toString() : "");
     history[replace ? "replaceState" : "pushState"](null,"",url);
   }
@@ -57,15 +60,17 @@
   function controls() {
     $("search").value=state.q; $("source").value=state.source; $("tag").value=state.tag;
     $("feed-filter").value=state.feedStatus;
-    $("articles-section").hidden=state.view!=="articles";
-    $("feeds-section").hidden=state.view!=="feeds";
-    $("nav-articles").classList.toggle("active",state.view==="articles");
-    $("nav-feeds").classList.toggle("active",state.view==="feeds");
-    $("nav-articles").setAttribute("aria-current",state.view==="articles" ? "page" : "false");
-    $("nav-feeds").setAttribute("aria-current",state.view==="feeds" ? "page" : "false");
-    $("breadcrumb-section").textContent=state.view==="feeds" ? "Coleta de feeds" : "Artigos";
-    $("page-title").replaceChildren(document.createTextNode(state.view==="feeds" ? "Fontes sob observação" : "Seu radar de ameaças"),element("span","","."));
-    $("page-description").textContent=state.view==="feeds" ? "Acompanhe tentativas, sucessos e erros de cada fonte." : "Notícias, pesquisas e indicadores em um só lugar.";
+    $("topics-limit").value=state.topicLimit;
+    for(const view of ["articles","topics","feeds"]) {
+      $(view+"-section").hidden=state.view!==view;
+      $("nav-"+view).classList.toggle("active",state.view===view);
+      $("nav-"+view).setAttribute("aria-current",state.view===view ? "page" : "false");
+    }
+    const views={articles:["Artigos","Seu radar de ameaças","Notícias, pesquisas e indicadores em um só lugar."], feeds:["Coleta de feeds","Fontes sob observação","Acompanhe tentativas, sucessos e erros de cada fonte."], topics:["Tópicos","Assuntos em destaque","Explore os termos mais relevantes do seu arquivo."]};
+    const [section,title,description]=views[state.view];
+    $("breadcrumb-section").textContent=section;
+    $("page-title").replaceChildren(document.createTextNode(title),element("span","","."));
+    $("page-description").textContent=description;
     $("results-title").textContent=state.q ? `Resultados para “${state.q}”` : (state.category ? categoryName(state.category) : "Últimos artigos");
     $("active-category").hidden=!state.category;
     $("active-category").textContent=categoryName(state.category);
@@ -75,12 +80,12 @@
   function syncMenuAccessibility() {$("sidebar").inert=mobileNavigation.matches && !$("sidebar").classList.contains("open");}
   function closeMenu() {$("sidebar").classList.remove("open"); $("menu-toggle").setAttribute("aria-expanded","false");syncMenuAccessibility();}
   function updateArticles(changes) {
-    state={...state,...changes,offset:0,view:"articles",article:""}; closeMenu(); closeDetail(false); writeURL(); controls(); loadArticles();
+    state={...state,...changes,offset:0,view:"articles",article:""}; closeMenu(); closeDetail(false); writeURL(); controls(); loadView();
   }
   function navigate(view, feedStatus="") {
     state.view=view; state.feedStatus=feedStatus; state.feedOffset=0; state.article="";
     closeMenu(); closeDetail(false); writeURL(); controls();
-    if(view==="feeds") loadFeeds(); else loadArticles();
+    loadView();
   }
   async function loadFacets() {
     facets=await request("/filters");
@@ -169,6 +174,35 @@
     } catch(error) {if(error.name!=="AbortError") {$("feed-list").replaceChildren();message("feeds-message","Não foi possível carregar os feeds","Tente novamente para consultar o estado das fontes.",loadFeeds);}}
     finally {if(controller===feedController) $("feed-list").classList.remove("loading");}
   }
+  function loadView() {
+    if(state.view!=="topics") topicController?.abort();
+    return state.view==="topics" ? loadTopics() : (state.view==="feeds" ? loadFeeds() : loadArticles());
+  }
+  async function loadTopics() {
+    topicController?.abort();const controller=topicController=new AbortController();
+    $("topic-list").setAttribute("aria-busy","true");$("topic-list").classList.add("loading");
+    $("topics-message").hidden=true;$("topics-summary").textContent="Calculando tópicos do arquivo…";
+    try {
+      const data=await request("/topics?"+new URLSearchParams({limit:state.topicLimit}),controller.signal);
+      if(controller!==topicController) return;
+      const maximum=Math.max(1,...data.items.map(topic=>topic.score));
+      $("topic-list").replaceChildren(...data.items.map((topic,index)=>{
+        const card=button("","topic-card",()=>updateArticles({q:topic.topic,category:"",source:"",tag:""}));
+        const top=element("span","topic-top");top.append(element("span","topic-rank",String(index+1).padStart(2,"0")),element("span","topic-term",topic.topic));
+        const relevance=element("meter","topic-relevance");relevance.min=0;relevance.max=maximum;relevance.value=topic.score;relevance.setAttribute("aria-label",`Relevância de ${topic.topic}`);
+        const bottom=element("span","topic-bottom");bottom.append(element("span","",`Relevância ${scores.format(topic.score)}`),element("span","topic-action","Buscar artigos ↗"));
+        card.append(top,relevance,bottom);return card;
+      }));
+      $("topics-summary").textContent=`${number.format(data.items.length)} ${data.items.length===1 ? "tópico disponível" : "tópicos disponíveis"} · arquivo completo`;
+      if(!data.items.length) message("topics-message","Nenhum tópico disponível","Colete artigos com títulos e resumos para explorar os assuntos do arquivo.");
+    } catch(error) {
+      if(error.name==="AbortError") return;
+      $("topic-list").replaceChildren();$("topics-summary").textContent="Tópicos indisponíveis";
+      message("topics-message","Não foi possível carregar os tópicos","Verifique a conexão e tente novamente.",loadTopics);
+    } finally {
+      if(controller===topicController) {$("topic-list").setAttribute("aria-busy","false");$("topic-list").classList.remove("loading");}
+    }
+  }
   function detailSection(title,values,kind="") {
     const section=element("section","detail-section");section.append(element("h3","",title));
     if(!values.length) {section.append(element("p","detail-empty","Nenhum registro neste artigo."));return section;}
@@ -213,7 +247,7 @@
       else if(data.result) $("collection-status").textContent=`Coleta concluída: ${number.format(data.result.feeds_downloaded)} feeds baixados, ${number.format(data.result.feeds_failed)} com erro e ${number.format(data.result.articles_saved)} artigos salvos ou atualizados.`;
       else $("collection-status").textContent="Busque novos artigos sem esperar a próxima coleta automática.";
       if(running || finished) await Promise.allSettled([loadSummary(), ...(state.view==="feeds" ? [loadFeeds()] : [])]);
-      if(finished) await Promise.allSettled([loadFacets(),state.view==="feeds" ? loadFeeds() : loadArticles()]);
+      if(finished) await Promise.allSettled([loadFacets(),loadView()]);
       // Also detect automatic collections that start while this page is open.
       collectionTimer=setTimeout(loadCollection,running ? 3000 : 15000);
     } catch(error) {
@@ -239,7 +273,7 @@
   }
   async function refresh() {
     $("refresh").disabled=true; $("global-message").hidden=true;
-    const results=await Promise.allSettled([loadFacets(),loadSummary(),loadCollection(),state.view==="feeds" ? loadFeeds() : loadArticles()]);
+    const results=await Promise.allSettled([loadFacets(),loadSummary(),loadCollection(),loadView()]);
     if(results[0].status==="rejected" || results[1].status==="rejected") {$("global-message").textContent="Não foi possível atualizar os filtros ou o resumo da coleta. Tente atualizar a tela novamente.";$("global-message").hidden=false;}
     $("refresh").disabled=false;
   }
@@ -249,6 +283,8 @@
   $("tag").addEventListener("change",()=>updateArticles({tag:$("tag").value.trim()}));
   $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:""}));
   $("all-categories").addEventListener("click",()=>updateArticles({category:""}));
+  $("nav-topics").addEventListener("click",()=>navigate("topics"));
+  $("topics-limit").addEventListener("change",()=>{state.topicLimit=Number($("topics-limit").value);writeURL();loadTopics();});
   $("nav-articles").addEventListener("click",()=>navigate("articles"));$("nav-feeds").addEventListener("click",()=>navigate("feeds"));$("stat-errors-button").addEventListener("click",()=>navigate("feeds","error"));
   $("collect-now").addEventListener("click",collectNow);
   $("refresh").addEventListener("click",refresh);
@@ -262,7 +298,7 @@
   $("menu-toggle").addEventListener("click",()=>{const open=$("sidebar").classList.toggle("open");$("menu-toggle").setAttribute("aria-expanded",String(open));syncMenuAccessibility();});
   document.addEventListener("click",event=>{if($("sidebar").classList.contains("open") && !$("sidebar").contains(event.target) && !$("menu-toggle").contains(event.target)) closeMenu();});
   document.addEventListener("keydown",event=>{if(event.key==="Escape") closeMenu();});
-  window.addEventListener("popstate",()=>{closeDetail(false);state=readURL();controls();if(state.view==="feeds") loadFeeds();else loadArticles();if(state.article) openDetail(state.article,false);});
+  window.addEventListener("popstate",()=>{closeDetail(false);state=readURL();controls();loadView();if(state.article) openDetail(state.article,false);});
   mobileNavigation.addEventListener("change",syncMenuAccessibility);syncMenuAccessibility();
   controls();refresh();if(state.article) openDetail(state.article,false);
 })();
