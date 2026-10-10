@@ -149,7 +149,7 @@ the rules in running processes.
 
 #### Threat actor detection
 
-Threat actors are detected using a normalized local catalog generated from MITRE ATT&CK Enterprise STIX 2.1 data.
+Threat actors are detected using a normalized local MITRE ATT&CK Enterprise catalog, extended with the local MISP Threat Actor Galaxy snapshot.
 
 The catalog supports:
 
@@ -160,6 +160,66 @@ The catalog supports:
 - catalog regeneration from a specific or latest stable ATT&CK release
 
 Ambiguous aliases assigned to more than one actor are intentionally skipped.
+
+#### MISP Threat Actor Galaxy
+
+Actor detection combines the existing MITRE/local-override catalog with the
+[MISP Threat Actor Galaxy](https://github.com/MISP/misp-galaxy/blob/main/clusters/threat-actor.json).
+The original JSON is shipped locally as
+`src/config/catalogs/misp_threat_actor_galaxy.json`, together with its source URL,
+version, SHA-256 and download time in `misp_threat_actor_galaxy_metadata.json`.
+This packaged snapshot uses the upstream [CC0 license option](https://github.com/MISP/misp-galaxy/blob/main/LICENSE.md)
+and retains the Galaxy's authors and metadata.
+
+Before each actual collection, the application checks whether the Galaxy needs
+an update. **The default period is seven days (168 hours)** after the last
+successful check. The worker, CLI `rss update` and manual web collection use the
+same update path. With the default six-hour collector interval, a due check runs
+at the next collection; there is no separate timer and no update while the
+application is stopped or when a valid article cache is reused.
+
+The runtime copy is `data/misp-galaxy/threat-actor.json`, with update status in
+`data/misp-galaxy/status.json`. The first collection seeds it from the packaged
+snapshot. Later checks use conditional HTTP requests (`ETag`/`Last-Modified`).
+Only valid, complete Galaxy JSON replaces the local file, through an atomic
+write and a shared process lock. Failures preserve the local snapshot and retry
+no sooner than six hours later. If the runtime file is unavailable or corrupt,
+the detector falls back to the packaged copy, then to MITRE alone if necessary.
+The source uses a fixed HTTPS URL, bounded timeouts and a 10 MiB response limit;
+no article data is sent to MISP/GitHub and article enrichment itself stays local.
+
+```bash
+rss-update-misp --status          # local status, without HTTP
+rss-update-misp                   # update only when the period is due
+rss-update-misp --force           # request an update immediately
+```
+
+Set `CYBER_RSS_MISP_UPDATE_INTERVAL_HOURS=168` to configure the period or
+`CYBER_RSS_MISP_AUTO_UPDATE=0` to disable automatic HTTP checks while continuing
+to use local Galaxy data. CLI `--interval-hours` overrides the period for that
+invocation. A custom archive uses a `misp-galaxy` directory next to its database;
+use `rss-update-misp --directory /path/to/misp-galaxy` for that archive. Docker
+uses the existing runtime volume, so updates work with the read-only image and
+survive restarts. These runtime files are excluded from Git and from article
+backups; the packaged snapshot remains available after restoring an archive.
+
+The detector preserves MITRE canonical names when the Galaxy has an unambiguous
+identity match. Explicit group IDs/official group references take priority;
+conflicting crosswalks and aliases shared by different actors are skipped.
+Existing unambiguous MITRE aliases take precedence over conflicting imports.
+Local MITRE alias removals are not reintroduced by the Galaxy. New single-word,
+short and generic group-number aliases require nearby actor/group context;
+generic actor labels and entries explicitly classified as campaigns/operations
+are excluded. URL paths and hostnames do not generate actor-name matches.
+MISP-only actors keep their Galaxy name; the integration does not invent MITRE
+IDs, merge uncertain group profiles or infer ATT&CK relationships from MISP
+`related` entries.
+
+Long-running collectors reload the merged aliases before each collection, so
+manual/weekly Galaxy updates take effect without a restart. Existing archived
+actor fields are unchanged; articles returned by subsequent collections receive
+the new enrichment. To activate this release, restart the services or rebuild
+the Docker image; refresh the feeds to enrich current entries.
 
 ### Search and analysis
 
@@ -1048,12 +1108,15 @@ articles, metadata and per-feed collection state.
 |---|---|---|
 | `data/articles.sqlite3` | SQLite archive and refresh metadata | No |
 | `data/cve-cache.sqlite3` | Shared CVE lookup cache and outbound budget | No |
+| `data/misp-galaxy/` | Runtime MISP actor snapshot and update status | No |
 | `data/backups/` | Verified backup files and manifests | No |
 | `cache/articles.json` | Legacy cache, preserved for migration | No |
 | `logs/` | Runtime logs | No, except `.gitkeep` |
 | `data/mitre-attack/` | Downloaded ATT&CK STIX bundles | No |
 | `src/config/catalogs/malware.json` | Normalized malware catalog | Yes |
 | `src/config/catalogs/attack_mapping.json` | Versioned ATT&CK entity/relationship graph | Yes |
+| `src/config/catalogs/misp_threat_actor_galaxy.json` | Bundled MISP actor Galaxy snapshot | Yes |
+| `src/config/catalogs/misp_threat_actor_galaxy_metadata.json` | MISP snapshot provenance and timestamp | Yes |
 | `src/config/catalogs/threat_actors.json` | Normalized actor catalog | Yes |
 | `src/config/catalogs/threat_actor_overrides.json` | Local override configuration | Yes |
 

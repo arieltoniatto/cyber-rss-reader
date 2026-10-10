@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import re
 import logging
@@ -9,6 +10,8 @@ from pathlib import Path
 from re import Pattern
 
 from parser.models import Article
+from cti.misp_threat_actors import merge_actors
+from enrichment.text import refang, mask_references
 
 
 _HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
@@ -25,6 +28,7 @@ class _CompiledAlias:
     canonical_name: str
     alias: str
     pattern: Pattern[str]
+    requires_context: bool = False
 
 
 class ThreatActorEnricher:
@@ -38,11 +42,26 @@ class ThreatActorEnricher:
     def __init__(
         self,
         catalog_file: Path,
+        *,
+        galaxy: dict | None = None,
+        overrides_file: Path | None = None,
     ) -> None:
         self._catalog_file = catalog_file
-        self._aliases = self._load_catalog(
-            catalog_file
-        )
+        self._overrides_file = overrides_file
+        self._signature = None
+        self.reload(galaxy)
+
+    def reload(self, galaxy: dict | None = None) -> None:
+        def fingerprint(path):
+            stat = path.stat() if path is not None and path.exists() else None
+            return (stat.st_mtime_ns, stat.st_size) if stat else None
+        signature = (fingerprint(self._catalog_file), fingerprint(self._overrides_file),
+                     hashlib.sha256(json.dumps(galaxy, sort_keys=True).encode()).hexdigest())
+        if signature == self._signature:
+            return
+        aliases = self._load_catalog(self._catalog_file, galaxy=galaxy, overrides_file=self._overrides_file)
+        self._aliases = aliases
+        self._signature = signature
 
     @property
     def name(self) -> str:
@@ -80,6 +99,7 @@ class ThreatActorEnricher:
         parts = (
             article.title,
             article.summary,
+            *article.tags,
         )
 
         raw_content = " ".join(
@@ -100,7 +120,7 @@ class ThreatActorEnricher:
         )
 
         return " ".join(
-            content_without_html.split()
+            mask_references(refang(content_without_html)).split()
         )
 
     def _detect_actors(
@@ -115,6 +135,10 @@ class ThreatActorEnricher:
             for match in compiled_alias.pattern.finditer(
                 content
             ):
+                if compiled_alias.requires_context and not re.search(
+                    r'\b(?:threat\s+actors?|(?:hacker|attacker|actor|group|adversary|criminal|APT)s?|grupo|atacante|invasores)\b',
+                    content[max(0, match.start()-80):match.start()] + " " + content[match.end():match.end()+80], re.IGNORECASE):
+                    continue
                 matches.append(
                     (
                         match.start(),
@@ -170,6 +194,7 @@ class ThreatActorEnricher:
     def _load_catalog(
         cls,
         catalog_file: Path,
+        *, galaxy: dict | None = None, overrides_file: Path | None = None,
     ) -> tuple[_CompiledAlias, ...]:
         if not catalog_file.exists():
             raise FileNotFoundError(
@@ -206,6 +231,14 @@ class ThreatActorEnricher:
                 "Threat actor catalog must contain "
                 "a JSON object or list."
             )
+
+        guarded = set()
+        if galaxy is not None:
+            try:
+                overrides = json.loads(overrides_file.read_bytes()) if overrides_file and overrides_file.exists() else None
+                entries, guarded = merge_actors(entries, galaxy, overrides)
+            except (OSError, ValueError, TypeError, KeyError):
+                logger.exception('MISP Galaxy merge failed; preserving MITRE actor detection')
 
         alias_text_by_key: dict[str, str] = {}
 
@@ -279,11 +312,14 @@ class ThreatActorEnricher:
             _CompiledAlias
         ] = []
 
+        ambiguous_count = 0
         for alias_key, owners in alias_owners.items():
             alias = alias_text_by_key[alias_key]
 
             if len(owners) != 1:
-                logger.warning(
+                ambiguous_count += 1
+                log = logger.debug if galaxy is not None else logger.warning
+                log(
                     "Ignoring ambiguous threat actor "
                     "alias %r assigned to: %s",
                     alias,
@@ -301,8 +337,12 @@ class ThreatActorEnricher:
                     pattern=cls._compile_alias(
                         alias
                     ),
+                    requires_context=(canonical_name, alias_key) in guarded,
                 )
             )
+
+        if galaxy is not None and ambiguous_count:
+            logger.info("Skipped %d ambiguous aliases in the combined MITRE/MISP actor catalog", ambiguous_count)
 
         # Prefer longer aliases during detection.
         compiled_aliases.sort(
@@ -324,7 +364,7 @@ class ThreatActorEnricher:
         This prevents APT29 from matching text such as APT290.
         """
         return re.compile(
-            rf"(?<!\w){re.escape(alias)}(?!\w)",
+            rf"(?<![\w.-]){re.escape(alias)}(?![\w-]|\.[\w.-])",
             flags=re.IGNORECASE,
         )
 

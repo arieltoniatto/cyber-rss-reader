@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "source_url": "https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/threat-actor.json",
+  "sha256": "599aa85c28dab5c6136bd10329fa754d694a6d99088d7fd89376debdcebca896",
+  "version": 352,
+  "actor_count": 1060,
+  "checked_at": 1791675924.3245,
+  "downloaded_at": 1791675924.3245,
+  "license": "CC0-1.0",
+  "license_url": "https://github.com/MISP/misp-galaxy/blob/main/LICENSE.md"
+}

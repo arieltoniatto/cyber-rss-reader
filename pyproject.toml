@@ -45,6 +45,7 @@ rss-import-json = "tools.import_json_cache:main"
 rss-backup = "tools.backup_database:main"
 rss-restore = "tools.restore_database:main"
 rss-update-actors = "tools.update_threat_actor_catalog:main"
+rss-update-misp = "tools.update_misp_galaxy:main"
 rss-update-attack = "tools.update_attack_catalog:main"
 rss-update-malware = "tools.update_malware_catalog:main"
 

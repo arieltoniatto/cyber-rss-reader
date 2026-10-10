@@ -37,6 +37,7 @@ class ArticleService:
         parser: RSSParser,
         enrichment_pipeline: EnrichmentPipeline,
         configuration_loader=None,
+        before_collection=None,
     ) -> None:
 
         self._repository = repository
@@ -44,6 +45,7 @@ class ArticleService:
         self._parser = parser
         self._enrichment_pipeline = enrichment_pipeline
         self._configuration_loader = configuration_loader
+        self._before_collection = before_collection
 
     def _available_categories(
             self,
@@ -132,6 +134,12 @@ class ArticleService:
                 articles_saved=len(cached),
                 cache_used=True,
             )
+
+        if self._before_collection is not None:
+            try:
+                await self._before_collection()
+            except Exception:
+                logger.exception('Catalog refresh failed; continuing with loaded enrichment data')
 
         logger.info("Downloading feeds...")
 

@@ -20,6 +20,9 @@ APPLICATION_LOG_FILE = LOG_DIRECTORY / "cyber-rss-reader.log"
 THREAT_ACTOR_CATALOG_FILE = CATALOG_DIRECTORY / "threat_actors.json"
 ATTACK_MAPPING_CATALOG_FILE = CATALOG_DIRECTORY / "attack_mapping.json"
 MALWARE_CATALOG_FILE = CATALOG_DIRECTORY / "malware.json"
+MISP_GALAXY_DIRECTORY = DATA_DIRECTORY / "misp-galaxy"
+MISP_GALAXY_SEED_FILE = CATALOG_DIRECTORY / "misp_threat_actor_galaxy.json"
+MISP_GALAXY_SEED_METADATA = CATALOG_DIRECTORY / "misp_threat_actor_galaxy_metadata.json"
 THREAT_ACTOR_OVERRIDES_FILE = CATALOG_DIRECTORY / "threat_actor_overrides.json"
 
 

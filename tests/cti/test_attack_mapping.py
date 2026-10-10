@@ -225,7 +225,7 @@ async def test_default_collection_pipeline_persists_mapping_and_backup_restores_
 
     feeds = tmp_path / 'feeds'; feeds.mkdir()
     (feeds / 'news.yaml').write_text('category: news\nfeeds:\n  - name: Source\n    url: https://example.com/rss\n')
-    container = ApplicationContainer(database_file=tmp_path / 'archive.sqlite3', config_directory=feeds)
+    container = ApplicationContainer(database_file=tmp_path / 'archive.sqlite3', config_directory=feeds, misp_auto_update=False)
     parsed = feedparser.parse(b'''<rss version="2.0"><channel><title>Source</title><item>
     <title>APT28 BlackEnergy T1059.001</title><description>Campaign C0001</description>
     <link>https://example.com/mapping</link></item></channel></rss>''')

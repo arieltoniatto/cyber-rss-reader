@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import asyncio
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -9,6 +11,9 @@ from config.paths import (
     ATTACK_MAPPING_CATALOG_FILE,
     FEED_DIRECTORY,
     MALWARE_CATALOG_FILE,
+    MISP_GALAXY_SEED_FILE,
+    MISP_GALAXY_SEED_METADATA,
+    THREAT_ACTOR_OVERRIDES_FILE,
     THREAT_ACTOR_CATALOG_FILE,
 )
 from config.loader import ConfigLoader
@@ -22,6 +27,7 @@ from enrichment.attack_enricher import AttackEnricher
 from enrichment.cve_enricher import CVEEnricher
 from services.vulnerability_service import VulnerabilityService
 from cti.attack_mapping import AttackCatalog
+from cti.misp_galaxy_store import MispGalaxyStore
 from services.attack_service import AttackService
 from feeds.fetcher import RSSFetcher
 from parser.parser import RSSParser
@@ -51,6 +57,7 @@ class ApplicationContainer:
         database_file: Path = ARTICLE_DATABASE_FILE,
         cache_duration: timedelta = timedelta(hours=6),
         log_level: int = logging.WARNING,
+        misp_auto_update: bool | None = None,
     ) -> None:
 
         self._configure_logging(log_level)
@@ -105,9 +112,17 @@ class ApplicationContainer:
             catalog_file=MALWARE_CATALOG_FILE,
         )
 
+        self.misp_store = MispGalaxyStore(
+            (cache_file.parent if cache_file is not None else database_file.parent) / 'misp-galaxy',
+            MISP_GALAXY_SEED_FILE, MISP_GALAXY_SEED_METADATA,
+            interval_hours=float(os.environ.get('CYBER_RSS_MISP_UPDATE_INTERVAL_HOURS', '168')))
+        self.misp_auto_update = (os.environ.get('CYBER_RSS_MISP_AUTO_UPDATE', '1') != '0'
+                                 if misp_auto_update is None else misp_auto_update)
         self.threat_actor_enricher = (
             ThreatActorEnricher(
                 catalog_file=THREAT_ACTOR_CATALOG_FILE,
+                galaxy=self.misp_store.load(),
+                overrides_file=THREAT_ACTOR_OVERRIDES_FILE,
             )
         )
 
@@ -139,6 +154,7 @@ class ApplicationContainer:
             parser=self.parser,
             enrichment_pipeline=self.enrichment_pipeline,
             configuration_loader=self.feed_registry.configuration if self.feed_registry else None,
+            before_collection=self._refresh_threat_actor_catalog,
         )
 
         self.search_service = SearchService(
@@ -154,6 +170,12 @@ class ApplicationContainer:
         )
 
         logger.info("Application initialized.")
+
+    async def _refresh_threat_actor_catalog(self):
+        if self.misp_auto_update:
+            await asyncio.to_thread(self.misp_store.refresh)
+        galaxy = await asyncio.to_thread(self.misp_store.load)
+        await asyncio.to_thread(self.threat_actor_enricher.reload, galaxy)
 
     @staticmethod
     def _configure_logging(

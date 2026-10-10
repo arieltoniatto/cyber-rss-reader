@@ -87,3 +87,6 @@ data/*.worker.lock
 data/*.worker-instance.lock
 data/backups/
 deploy/generated/
+
+# Runtime MISP Galaxy snapshot, update metadata and lock
+data/misp-galaxy/

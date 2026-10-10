@@ -14,7 +14,8 @@ HEADERS = {'X-Cyber-RSS-Request': '1'}
 
 
 def wait_finished(client):
-    for _ in range(100):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
         state = client.get('/collection').json()
         if state['status'] != 'running':
             return state
@@ -136,7 +137,7 @@ feeds:
 ''')
     database = tmp_path / 'archive.sqlite3'
     def factory():
-        container = ApplicationContainer(database_file=database, config_directory=config)
+        container = ApplicationContainer(database_file=database, config_directory=config, misp_auto_update=False)
         container.fetcher.client.retries = 1
         return container.article_service
     try:

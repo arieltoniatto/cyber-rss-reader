@@ -77,7 +77,7 @@ def test_validation_duplicates_and_collection_lock(settings):
 @pytest.mark.asyncio
 async def test_existing_collector_reloads_configuration_before_next_cycle(settings):
     database, directory = settings
-    container = ApplicationContainer(database_file=database, config_directory=directory)
+    container = ApplicationContainer(database_file=database, config_directory=directory, misp_auto_update=False)
     calls = []
     async def fetch():
         calls.append([feed.name for category in container.fetcher.configuration.categories for feed in category.feeds])
