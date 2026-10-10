@@ -27,6 +27,10 @@
       <header class="topbar"><button id="menu-toggle" class="icon-button mobile-menu" type="button" aria-label="Abrir navegação" aria-controls="sidebar" aria-expanded="false">☰</button><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-section">Artigos</strong></div><div class="topbar-right"><span class="read-only"><span class="status-dot" aria-hidden="true"></span> Consulta ao arquivo</span><button id="refresh" class="secondary-button" type="button">↻ Atualizar tela</button></div></header>
       <main id="main" tabindex="-1">
         <section class="intro"><div><p class="eyebrow">INTELIGÊNCIA EM SEGURANÇA</p><h1 id="page-title">Seu radar de ameaças<span>.</span></h1><p id="page-description">Notícias, pesquisas e indicadores em um só lugar.</p></div><span class="intro-chip"><span aria-hidden="true">◈</span> CYBER INTELLIGENCE</span></section>
+        <section class="collection-toolbar" aria-label="Coleta manual">
+          <div class="collection-controls"><button id="collect-now" class="primary-button" type="button" disabled>↻ Coletar agora</button><label class="collection-option"><input id="force-refresh" type="checkbox" checked> Ignorar intervalo de 6 horas</label></div>
+          <p id="collection-status" role="status" aria-live="polite">Consultando estado da coleta…</p>
+        </section>
         <section class="stats" aria-label="Resumo do arquivo e coleta">
           <div class="stat"><span>ARTIGOS NO ARQUIVO</span><strong id="stat-articles">—</strong><small>Histórico disponível</small></div>
           <div class="stat"><span>FEEDS COM SUCESSO</span><strong id="stat-feeds">—</strong><small id="stat-feeds-note">Aguardando estado da coleta</small></div>

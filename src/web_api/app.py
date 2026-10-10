@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Literal
 from collections import Counter
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict, StrictBool
+from app.worker import CollectorBusy
+from web_api.collection import CollectionController
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -25,14 +28,25 @@ from topics.extractor import TopicExtractionService
 from web_api.security import AccessMiddleware, SecuritySettings
 
 
+class CollectionRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    force_refresh: StrictBool = True
+
+
 def create_app(repository: ArticleRepository | None = None, *,
                database_file: Path = ARTICLE_DATABASE_FILE,
-               security: SecuritySettings | None = None) -> FastAPI:
+               security: SecuritySettings | None = None,
+               collection_service_factory=None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
                                 await run_in_threadpool(SQLiteArticleRepository, database_file))
-        yield
+        archive = getattr(app.state.repository, 'database_file', database_file)
+        app.state.collection = CollectionController(archive, collection_service_factory)
+        try:
+            yield
+        finally:
+            await run_in_threadpool(app.state.collection.close)
 
     app = FastAPI(title="Cyber RSS Reader", version="0.1.0", lifespan=lifespan)
     app.add_middleware(AccessMiddleware, settings=security if security is not None else SecuritySettings.from_environment())
@@ -50,6 +64,23 @@ def create_app(repository: ArticleRepository | None = None, *,
 
     def serialize(article):
         return {"id": article_key(article), **article_to_dict(article)}
+
+    @app.get('/collection')
+    def collection_status(response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        return app.state.collection.status()
+
+    @app.post('/collection', status_code=202)
+    def collect_now(body: CollectionRequest, request: Request):
+        # A custom header prevents HTML forms and cross-origin browser requests
+        # from starting a collection. Cross-origin preflights are not enabled.
+        if (request.headers.get('x-cyber-rss-request') != '1' or
+                request.headers.get('sec-fetch-site') == 'cross-site'):
+            raise HTTPException(status_code=403, detail='Use a same-origin collection request')
+        try:
+            return app.state.collection.start(force_refresh=body.force_refresh)
+        except CollectorBusy:
+            raise HTTPException(status_code=409, detail='A collection is already running')
 
     @app.get("/health")
     def health():
@@ -115,7 +146,7 @@ def create_app(repository: ArticleRepository | None = None, *,
 def main() -> None:
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="Serve the read-only article API.")
+    parser = argparse.ArgumentParser(description="Serve the article API and manual collection controls.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--database", type=Path, default=ARTICLE_DATABASE_FILE)

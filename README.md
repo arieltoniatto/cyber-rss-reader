@@ -1,6 +1,6 @@
 # Cybersecurity RSS Reader
 
-A modular cybersecurity RSS and threat intelligence reader built with Python 3.12+, with a CLI, browser frontend, read-only HTTP API, and separate collector worker.
+A modular cybersecurity RSS and threat intelligence reader built with Python 3.12+, with a CLI, browser frontend, HTTP API with manual collection, and separate collector worker.
 
 The application collects RSS/Atom feeds, normalizes articles, enriches them with cybersecurity metadata, stores them in a transactional SQLite archive, and exposes search, filtering, and topic extraction through a Typer and Rich CLI or an optional FastAPI interface.
 
@@ -8,7 +8,7 @@ The application collects RSS/Atom feeds, normalizes articles, enriches them with
 
 - Version: `0.1.0`
 - Python: `>=3.12`
-- Interfaces: terminal CLI, browser frontend and optional read-only HTTP API
+- Interfaces: terminal CLI, browser frontend and optional HTTP API with manual collection
 - Storage backend: SQLite by default; legacy JSON adapter available
 - Current topic extractor: TF-IDF
 - Feed configuration: YAML
@@ -624,6 +624,8 @@ runs outside the HTTP event loop, following the
 | `GET /filters` | Available categories, sources and tags from the full archive |
 | `GET /articles/detail?id=...` | Article details by stable ID |
 | `GET /health` | Check archive access |
+| `GET /collection` | Manual collection result or active automatic cycle |
+| `POST /collection` | Start background collection, with an explicit intent header |
 | `GET /feeds` | Per-feed collection status, optional `status`, `limit`, `offset` |
 | `GET /articles` | Latest articles with `category`, `source`, `tag`, `limit`, `offset` |
 | `GET /search?q=malware` | Fuzzy text search with `category`, `source`, `limit`, `offset` |
@@ -650,6 +652,24 @@ and the article dialog supports direct links, Escape, and keyboard focus.
 The feed view shows errors, latest attempts/successes, successful article counts,
 and collection warnings. **Atualizar tela** reloads the archive and feed state;
 it does not start a collection. Run the separate worker to collect new data.
+**Coletar agora** starts a background collection and shows its result without
+blocking archive queries. By default, **Ignorar intervalo de 6 horas** is checked
+to download feeds immediately. Uncheck it to reuse a still-valid archive.
+The controls detect automatic collections, prevent concurrent runs, and refresh
+articles and feed status after completion. Saved counts include both inserted
+and updated entries, not only new articles. Individual feed failures appear in
+the result and feed view even when the overall cycle completes.
+
+`GET /collection` reports the current manual job or an active automatic cycle.
+`POST /collection` accepts `{"force_refresh": true}` and requires the
+`X-Cyber-RSS-Request: 1` header. It returns 202 immediately or 409 if collection
+is already running. Authentication and request budgets also apply to these
+endpoints; browser cross-origin collection requests are not enabled.
+Manual job results live in the API process and reset after restart; article and
+feed state remain persistent. Restart both API and worker when upgrading from
+the older worker that held its lock between cycles. For Docker, rebuild and
+recreate the services with `docker compose up -d --build`.
+
 Date/time labels use the browser's local timezone. The summary shows the latest
 recorded success across feeds, which does not imply every feed is up to date.
 
@@ -705,7 +725,10 @@ There is no alert delivery or full attempt history yet.
 The collector forces a refresh each cycle and waits the configured interval
 **after completion**. Failed cycles are logged and retried on the next cycle;
 `--once` exits with an error if the cycle raises. The worker uses a POSIX file
-lock to prevent two worker processes from collecting into the same archive.
+instance lock to prevent duplicate workers and a separate collection lock
+shared with manual web requests. The collection lock is released during the
+six-hour wait. If a manual cycle is already running, a periodic worker skips
+that attempt and retries at its next interval; `--once` reports the conflict.
 Manual `rss update` commands are not covered by that lock, but their writes
 remain transactional. The worker currently targets Linux/macOS.
 
@@ -821,7 +844,7 @@ Development dependencies:
 - Malware and threat actor enrichment perform local name and alias matching; they are not full ATT&CK technique, campaign, or relationship mapping.
 - Ambiguous malware and threat actor aliases are skipped.
 - Malware enrichment requires a generated `src/config/catalogs/malware.json`; an empty or missing catalog safely disables that enricher.
-- The read-only API and frontend support optional authentication, LAN HTTPS and request limits; see [deploy/HTTPS.md](deploy/HTTPS.md). Multiple users/roles and authenticated write operations are not implemented.
+- The API and frontend support optional authentication, LAN HTTPS and request limits; see [deploy/HTTPS.md](deploy/HTTPS.md). Multiple users/roles and general archive editing are not implemented.
 - No server database backend or general database migration framework is implemented.
 
 ## Roadmap

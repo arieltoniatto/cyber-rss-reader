@@ -14,26 +14,40 @@ from config.paths import ARTICLE_DATABASE_FILE, FEED_DIRECTORY
 logger = logging.getLogger(__name__)
 
 
+class CollectorBusy(RuntimeError):
+    pass
+
+
 @contextmanager
-def collector_lock(database_file: Path):
-    """Only one worker per archive; the OS releases the lock after a crash."""
-    lock_file = database_file.resolve().with_suffix(".worker.lock")
+def archive_lock(database_file: Path, suffix: str):
+    """The OS releases advisory locks after a process exits."""
+    lock_file = database_file.resolve().with_suffix(suffix)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     with lock_file.open("a") as stream:
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise RuntimeError("Another collector is already running for this database") from exc
+            raise CollectorBusy("Another collector is already running for this database") from exc
         try:
             yield
         finally:
             fcntl.flock(stream, fcntl.LOCK_UN)
 
 
-async def collect(container: ApplicationContainer, *, interval: float, once: bool) -> None:
+def collector_lock(database_file: Path):
+    return archive_lock(database_file, '.worker.lock')
+
+
+def worker_instance_lock(database_file: Path):
+    return archive_lock(database_file, '.worker-instance.lock')
+
+
+async def collect(container: ApplicationContainer, *, interval: float, once: bool,
+                  database_file: Path = ARTICLE_DATABASE_FILE) -> None:
     while True:
         try:
-            result = await container.article_service.update(force_refresh=True)
+            with collector_lock(database_file):
+                result = await container.article_service.update(force_refresh=True)
             logger.info("Collection result: %s", result)
         except Exception:
             if once:
@@ -55,10 +69,10 @@ def main() -> None:
     if not math.isfinite(args.interval) or args.interval <= 0:
         parser.error("--interval must be positive")
     try:
-        with collector_lock(args.database):
+        with worker_instance_lock(args.database):
             container = ApplicationContainer(database_file=args.database,
                                              config_directory=args.feeds, log_level=logging.INFO)
-            asyncio.run(collect(container, interval=args.interval, once=args.once))
+            asyncio.run(collect(container, interval=args.interval, once=args.once, database_file=args.database))
     except KeyboardInterrupt:
         pass
     except RuntimeError as exc:

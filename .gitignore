@@ -84,5 +84,6 @@ Desktop.ini
 # SQLite archive and collector lock
 data/*.sqlite3*
 data/*.worker.lock
+data/*.worker-instance.lock
 data/backups/
 deploy/generated/

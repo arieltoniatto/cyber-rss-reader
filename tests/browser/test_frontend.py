@@ -181,3 +181,43 @@ def test_browser_back_restores_category(page):
     page.go_back()
     expect(page.locator('#results-title')).to_have_text('Notícias')
     expect(page.locator('.article-card')).to_have_count(14)
+
+
+@pytest.mark.parametrize('outcome', ['completed', 'cached', 'failed'])
+def test_manual_collection_controls_and_result(page, outcome):
+    running = False
+    checks = 0
+    requests = []
+    def collection(route):
+        nonlocal running, checks
+        if route.request.method == 'POST':
+            requests.append(route.request.post_data_json)
+            assert route.request.headers['x-cyber-rss-request'] == '1'
+            running = True
+            route.fulfill(status=202, json={'status': 'running'})
+        elif not running:
+            route.fulfill(json={'status': 'idle'})
+        else:
+            checks += 1
+            if checks == 1:
+                route.fulfill(json={'status': 'running', 'source': 'manual'})
+            elif outcome == 'failed':
+                route.fulfill(json={'status': 'failed', 'error': 'A coleta falhou. Tente novamente.'})
+            else:
+                route.fulfill(json={'status': 'completed', 'result': {
+                    'feeds_downloaded': 2, 'feeds_failed': 1, 'articles_saved': 6,
+                    'cache_used': outcome == 'cached'}})
+    page.route('**/collection', collection)
+    page.locator('#refresh').click()
+    expect(page.locator('#collect-now')).to_be_enabled()
+    if outcome == 'cached':
+        page.locator('#force-refresh').uncheck()
+    page.locator('#collect-now').click()
+    expect(page.locator('#collect-now')).to_be_disabled()
+    expect(page.locator('#collection-status')).to_contain_text('Baixando e processando')
+    expect(page.locator('#collect-now')).to_be_enabled(timeout=10000)
+    assert requests == [{'force_refresh': outcome != 'cached'}]
+    expected = {'completed': '2 feeds baixados, 1 com erro e 6 artigos salvos ou atualizados',
+                'cached': 'O arquivo ainda está atualizado', 'failed': 'A coleta falhou'}
+    expect(page.locator('#collection-status')).to_contain_text(expected[outcome])
+    expect(page.locator('.article-card')).to_have_count(20)

@@ -1,1 +1,1 @@
-"""Read-only HTTP interface to the shared article archive."""
+"""HTTP interface to the article archive and manual collection controls."""

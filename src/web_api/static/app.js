@@ -7,6 +7,7 @@
   const dates = new Intl.DateTimeFormat("pt-BR", {day:"2-digit", month:"short", year:"numeric"});
   const timestamps = new Intl.DateTimeFormat("pt-BR", {dateStyle:"short", timeStyle:"short"});
   let state = readURL(), articleController, detailController, feedController;
+  let collectionTimer, collectionWasRunning=false, collectionRequest=false;
   let facets = {categories:[], sources:[], tags:[], total:0};
   const categoryName = (value) => labels[value] || value;
   const formatDate = (value, full=false) => {
@@ -196,9 +197,49 @@
     catch(error) {if(error.name!=="AbortError") {const title=element("h2","","Artigo indisponível");title.id="detail-title";$("detail-content").replaceChildren(title,element("p","detail-empty","Não foi possível abrir este artigo. Ele pode não existir no arquivo ou a conexão está indisponível."),button("Tentar novamente","secondary-button",()=>openDetail(id,false)));}}
   }
   function closeDetail(changeURL=true) {detailController?.abort();if($("article-dialog").open) $("article-dialog").close();if(changeURL) {state.article="";writeURL(true);}}
+  async function loadCollection() {
+    clearTimeout(collectionTimer);
+    try {
+      const data=await request("/collection");
+      const running=data.status==="running", finished=collectionWasRunning && !running;
+      collectionWasRunning=running;
+      $("collect-now").disabled=running || collectionRequest;
+      $("force-refresh").disabled=running || collectionRequest;
+      $("collect-now").textContent=running ? "Coleta em andamento…" : "↻ Coletar agora";
+      $("collection-status").classList.toggle("collection-error",data.status==="failed");
+      if(running) $("collection-status").textContent=data.source==="worker" ? "O coletor automático está trabalhando. Aguarde para iniciar outra coleta." : "Baixando e processando os feeds. Você pode continuar consultando os artigos.";
+      else if(data.status==="failed") $("collection-status").textContent=data.error;
+      else if(data.result?.cache_used) $("collection-status").textContent="O arquivo ainda está atualizado. Para baixar os feeds novamente, marque a opção de ignorar o intervalo.";
+      else if(data.result) $("collection-status").textContent=`Coleta concluída: ${number.format(data.result.feeds_downloaded)} feeds baixados, ${number.format(data.result.feeds_failed)} com erro e ${number.format(data.result.articles_saved)} artigos salvos ou atualizados.`;
+      else $("collection-status").textContent="Busque novos artigos sem esperar a próxima coleta automática.";
+      if(running || finished) await Promise.allSettled([loadSummary(), ...(state.view==="feeds" ? [loadFeeds()] : [])]);
+      if(finished) await Promise.allSettled([loadFacets(),state.view==="feeds" ? loadFeeds() : loadArticles()]);
+      // Also detect automatic collections that start while this page is open.
+      collectionTimer=setTimeout(loadCollection,running ? 3000 : 15000);
+    } catch(error) {
+      $("collect-now").disabled=true;
+      $("collection-status").textContent="Não foi possível consultar a coleta. Tentando novamente…";
+      collectionTimer=setTimeout(loadCollection,5000);
+    }
+  }
+  async function collectNow() {
+    if(collectionRequest || collectionWasRunning) return;
+    collectionRequest=true; $("collect-now").disabled=true; $("force-refresh").disabled=true;
+    $("collection-status").textContent="Solicitando coleta…";
+    try {
+      const response=await fetch("/collection",{method:"POST",headers:{"Content-Type":"application/json","X-Cyber-RSS-Request":"1"},body:JSON.stringify({force_refresh:$("force-refresh").checked})});
+      if(response.status!==409 && !response.ok) throw new Error(`HTTP ${response.status}`);
+      if(response.ok) collectionWasRunning=true;
+    } catch(error) {
+      $("collection-status").textContent="Não foi possível confirmar o início da coleta. Verificando o estado…";
+    } finally {
+      collectionRequest=false;
+      await loadCollection();
+    }
+  }
   async function refresh() {
     $("refresh").disabled=true; $("global-message").hidden=true;
-    const results=await Promise.allSettled([loadFacets(),loadSummary(),state.view==="feeds" ? loadFeeds() : loadArticles()]);
+    const results=await Promise.allSettled([loadFacets(),loadSummary(),loadCollection(),state.view==="feeds" ? loadFeeds() : loadArticles()]);
     if(results[0].status==="rejected" || results[1].status==="rejected") {$("global-message").textContent="Não foi possível atualizar os filtros ou o resumo da coleta. Tente atualizar a tela novamente.";$("global-message").hidden=false;}
     $("refresh").disabled=false;
   }
@@ -209,6 +250,7 @@
   $("clear-filters").addEventListener("click",()=>updateArticles({q:"",category:"",source:"",tag:""}));
   $("all-categories").addEventListener("click",()=>updateArticles({category:""}));
   $("nav-articles").addEventListener("click",()=>navigate("articles"));$("nav-feeds").addEventListener("click",()=>navigate("feeds"));$("stat-errors-button").addEventListener("click",()=>navigate("feeds","error"));
+  $("collect-now").addEventListener("click",collectNow);
   $("refresh").addEventListener("click",refresh);
   $("previous").addEventListener("click",()=>{state.offset=Math.max(0,state.offset-limit);writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});
   $("next").addEventListener("click",()=>{state.offset+=limit;writeURL();loadArticles();$("results-title").scrollIntoView({block:"start",behavior:"smooth"});});

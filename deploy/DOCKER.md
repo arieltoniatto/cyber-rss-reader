@@ -1,7 +1,7 @@
 # Run locally with Docker Compose
 
 Docker runs the same installed Python package in three containers: `api` serves
-the browser interface, `worker` collects feeds immediately and every six hours
+the browser interface and manual collection controls, `worker` collects feeds immediately and every six hours
 after each cycle, and `backup` creates a verified snapshot at startup and every
 24 hours afterward, keeping 14 snapshots. Backup failures retry after five
 minutes. The collector and backup wait for the API/archive healthcheck before
