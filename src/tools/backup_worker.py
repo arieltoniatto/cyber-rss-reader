@@ -9,6 +9,7 @@ from threading import Event
 
 from config.paths import ARTICLE_DATABASE_FILE, BACKUP_DIRECTORY
 from storage.backup import create_backup
+from storage.factory import database_url_from_environment
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,15 @@ def run_backups(database: Path, directory: Path, *, interval: float, retry: floa
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--database', type=Path, default=ARTICLE_DATABASE_FILE)
+    parser.add_argument('--database', type=Path)
     parser.add_argument('--directory', type=Path, default=BACKUP_DIRECTORY)
     parser.add_argument('--interval', type=float, default=86400)
     parser.add_argument('--retry', type=float, default=300)
     parser.add_argument('--keep', type=int, default=14)
     args = parser.parse_args()
+    if args.database is None and database_url_from_environment():
+        parser.error('These backups support SQLite only. Use pg_dump or provider backups for PostgreSQL.')
+    args.database = args.database or ARTICLE_DATABASE_FILE
     if any(not math.isfinite(value) or value <= 0 for value in (args.interval, args.retry)) or args.keep < 1:
         parser.error('Intervals and retention must be positive')
     logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')

@@ -569,3 +569,14 @@ def test_vulnerability_lookup_context_cache_and_mobile_layout(page):
     section.scroll_into_view_if_needed()
     assert page.locator('#article-dialog').evaluate('(e) => e.scrollWidth <= e.clientWidth')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+
+def test_postgres_external_backups_do_not_offer_sqlite_zip_controls(page):
+    page.route('**/backups/status',lambda route:route.fulfill(json={'status':'unsupported','supported':False,'error':'Backups PostgreSQL externos.'}))
+    page.route('**/backups',lambda route:route.fulfill(json={'items':[],'retention':None,'supported':False,'message':'Gerencie os backups PostgreSQL com seu provedor.'}))
+    page.locator('#nav-backups').click()
+    expect(page.locator('#create-backup')).to_be_hidden()
+    expect(page.locator('#backups-retention')).to_contain_text('PostgreSQL')
+    expect(page.locator('#backups-format-note')).to_contain_text('Retenção e restauração')
+    expect(page.locator('#backups-format-note')).not_to_contain_text('ZIP')
+    expect(page.locator('#backup-list')).to_be_empty()

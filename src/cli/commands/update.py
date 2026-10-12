@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import nullcontext
+from storage.locks import CollectorBusy
 import typer
 
 from cli.dependencies import CLIServices
@@ -17,11 +19,13 @@ def register(app: typer.Typer, services: CLIServices) -> None:
     ) -> None:
         typer.echo("Updating feeds...")
 
-        result = asyncio.run(
-            services.article_service.update(
-                force_refresh=refresh,
-            )
-        )
+        lock_factory = getattr(services.article_service, 'collection_lock_factory', None) or nullcontext
+        try:
+            with lock_factory():
+                result = asyncio.run(services.article_service.update(force_refresh=refresh))
+        except CollectorBusy as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1)
 
         typer.echo()
 

@@ -29,6 +29,9 @@ class FeedRegistry:
         row = connection.execute('SELECT value FROM metadata WHERE key=?', (self.KEY,)).fetchone()
         if row is not None:
             return json.loads(row[0])
+        return self._defaults()
+
+    def _defaults(self):
         configuration = ConfigLoader(self.directory).load(include_disabled=True)
         return [{'id': hashlib.sha256(str(feed.url).encode()).hexdigest(),
                  **feed.model_dump(mode='json')} for category in configuration.categories
@@ -52,18 +55,22 @@ class FeedRegistry:
             with connection:
                 connection.execute('BEGIN IMMEDIATE')
                 rows = self._read(connection)
-                if feed_id is not None and not any(row['id'] == feed_id for row in rows):
-                    raise FeedNotFound(feed_id)
-                for row in rows:
-                    if row['id'] != feed_id and (row['name'].casefold() == values['name'].casefold() or
-                                                row['url'] == values['url']):
-                        raise FeedConflict('Já existe um feed com esse nome ou URL.')
-                saved = {'id': feed_id or uuid4().hex, **values}
-                rows = [saved if row['id'] == feed_id else row for row in rows]
-                if feed_id is None:
-                    rows.append(saved)
+                saved, rows = self._updated_rows(rows, values, feed_id)
                 connection.execute('INSERT OR REPLACE INTO metadata VALUES (?, ?)',
                                    (self.KEY, json.dumps(rows, ensure_ascii=False)))
                 # A changed URL or newly enabled source must not reuse the cache.
                 connection.execute("DELETE FROM metadata WHERE key='last_refresh'")
                 return saved
+
+    @staticmethod
+    def _updated_rows(rows, values, feed_id):
+        if feed_id is not None and not any(row['id'] == feed_id for row in rows):
+            raise FeedNotFound(feed_id)
+        for row in rows:
+            if row['id'] != feed_id and (row['name'].casefold() == values['name'].casefold() or row['url'] == values['url']):
+                raise FeedConflict('Já existe um feed com esse nome ou URL.')
+        saved = {'id': feed_id or uuid4().hex, **values}
+        rows = [saved if row['id'] == feed_id else row for row in rows]
+        if feed_id is None:
+            rows.append(saved)
+        return saved, rows

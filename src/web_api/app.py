@@ -31,7 +31,8 @@ from search.engine import SearchEngine
 from search.models import SearchOrder, SearchPeriod, SearchMatch
 from services.search_service import SearchService
 from storage.interfaces import ArticleRepository
-from storage.sqlite_storage import SQLiteArticleRepository
+from storage.factory import create_repository, is_postgres
+from config.postgres_feed_registry import PostgreSQLFeedRegistry
 from storage.utils import article_key, article_to_dict
 from topics.algorithms.tfidf import TFIDFTopicExtractor
 from topics.extractor import TopicExtractionService
@@ -77,26 +78,32 @@ def create_app(repository: ArticleRepository | None = None, *,
                feed_directory: Path = FEED_DIRECTORY,
                backup_directory: Path | None = None,
                attack_catalog_file: Path = ATTACK_MAPPING_CATALOG_FILE,
-               vulnerability_service: VulnerabilityService | None = None) -> FastAPI:
+               vulnerability_service: VulnerabilityService | None = None,
+               database_url: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
-                                await run_in_threadpool(SQLiteArticleRepository, database_file))
+                                await run_in_threadpool(create_repository, database_file=database_file, database_url=database_url))
         archive = getattr(app.state.repository, 'database_file', database_file)
         app.state.attack_catalog = await run_in_threadpool(AttackCatalog.load, attack_catalog_file)
         app.state.vulnerabilities = vulnerability_service or VulnerabilityService(Path(archive).parent / "cve-cache.sqlite3")
-        app.state.feed_registry = FeedRegistry(archive, feed_directory)
-        app.state.collection = CollectionController(archive, collection_service_factory or (
+        postgres = is_postgres(app.state.repository)
+        app.state.lock_target = app.state.repository if postgres else archive
+        app.state.feed_registry = (PostgreSQLFeedRegistry(app.state.repository, feed_directory) if postgres
+                                   else FeedRegistry(archive, feed_directory))
+        app.state.collection = CollectionController(app.state.lock_target, collection_service_factory or (
             lambda: ApplicationContainer(
-                database_file=archive, config_directory=feed_directory).article_service))
+                database_file=archive, database_url=app.state.repository._database_url if postgres else '',
+                config_directory=feed_directory).article_service))
         backup_path = backup_directory if backup_directory is not None else Path(
             os.environ.get('CYBER_RSS_BACKUP_DIR', str(archive.parent / 'backups')))
-        app.state.backups = BackupController(archive, backup_path)
+        app.state.backups = None if postgres else BackupController(archive, backup_path)
         try:
             yield
         finally:
             await run_in_threadpool(app.state.collection.close)
-            await run_in_threadpool(app.state.backups.close)
+            if app.state.backups is not None:
+                await run_in_threadpool(app.state.backups.close)
 
     app = FastAPI(title="Cyber RSS Reader", version="0.1.0", lifespan=lifespan)
     app.add_middleware(AccessMiddleware, settings=security if security is not None else SecuritySettings.from_environment())
@@ -118,16 +125,22 @@ def create_app(repository: ArticleRepository | None = None, *,
     @app.get('/backups')
     def backups(response: Response):
         response.headers['Cache-Control'] = 'no-store'
+        if app.state.backups is None:
+            return {'items': [], 'retention': None, 'supported': False, 'message': 'Gerencie os backups PostgreSQL com pg_dump ou com seu provedor de banco.'}
         return {'items': list_backups(app.state.backups.directory), 'retention': app.state.backups.keep}
 
     @app.get('/backups/status')
     def backup_status(response: Response):
         response.headers['Cache-Control'] = 'no-store'
+        if app.state.backups is None:
+            return {'status': 'unsupported', 'supported': False, 'error': 'Gerencie os backups PostgreSQL com pg_dump ou com seu provedor de banco.'}
         return app.state.backups.status()
 
     @app.post('/backups', status_code=202)
     def backup_now(request: Request):
         require_action(request)
+        if app.state.backups is None:
+            raise HTTPException(status_code=501, detail='Use backups PostgreSQL externos.')
         try:
             return app.state.backups.start()
         except BackupBusy:
@@ -135,6 +148,8 @@ def create_app(repository: ArticleRepository | None = None, *,
 
     @app.get('/backups/{backup_id}/download')
     def download_backup(backup_id: str):
+        if app.state.backups is None:
+            raise HTTPException(status_code=501, detail='Use backups PostgreSQL externos.')
         try:
             bundle = export_backup(app.state.backups.directory, backup_id)
         except FileNotFoundError:
@@ -161,7 +176,7 @@ def create_app(repository: ArticleRepository | None = None, *,
     def save_feed(body: FeedInput, request: Request, feed_id: str | None = None):
         require_action(request)
         try:
-            with collector_lock(app.state.feed_registry.database_file):
+            with collector_lock(app.state.lock_target):
                 return app.state.feed_registry.save(body.model_dump(mode='json'), feed_id=feed_id)
         except CollectorBusy:
             raise HTTPException(status_code=409, detail='Aguarde a coleta terminar antes de alterar os feeds.')

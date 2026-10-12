@@ -282,6 +282,8 @@
     $("backup-list").setAttribute("aria-busy","true");$("backups-message").hidden=true;
     try {
       const data=await request("/backups",controller.signal);if(controller!==backupController) return;
+      if(data.supported===false) {$("backup-list").replaceChildren();$("backups-summary").textContent="Backups gerenciados externamente";$("backups-retention").textContent=data.message;$("backups-format-note").textContent="Retenção e restauração são definidas pelas ferramentas ou pelo provedor de banco escolhido.";$("create-backup").hidden=true;return;}
+      $("create-backup").hidden=false;$("backups-format-note").textContent="Baixe uma cópia e guarde fora deste computador. O ZIP contém o banco e seu arquivo de verificação para restauração pela CLI.";
       $("backups-summary").textContent=`${number.format(data.items.length)} ${data.items.length===1 ? "cópia local disponível" : "cópias locais disponíveis"}`;
       $("backups-retention").textContent=`As últimas ${data.retention} cópias locais são mantidas, incluindo backups manuais e automáticos. Elas incluem artigos, estado da coleta e feeds gerenciados pela web.`;
       $("backup-list").replaceChildren(...data.items.map(backup=>{
@@ -304,6 +306,7 @@
     clearTimeout(backupTimer);
     try {
       const data=await request("/backups/status");
+      if(data.supported===false) {backupRunning=false;$("create-backup").disabled=true;$("create-backup").hidden=true;$("backup-status").textContent="";if(state.view==="backups") await loadBackups();return;}
       const finished=backupRunning && data.status!=="running";
       backupRunning=data.status==="running";
       $("create-backup").disabled=backupRunning || backupRequest;

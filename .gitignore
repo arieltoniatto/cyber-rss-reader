@@ -90,3 +90,6 @@ deploy/generated/
 
 # Runtime MISP Galaxy snapshot, update metadata and lock
 data/misp-galaxy/
+
+# Local PostgreSQL connection/password files
+*.secret

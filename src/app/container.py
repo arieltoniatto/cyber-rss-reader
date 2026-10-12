@@ -37,8 +37,10 @@ from services.search_service import SearchService
 from services.topic_service import TopicExtractionService
 from services.topic_service import TopicService
 from storage.interfaces import ArticleRepository
-from storage.json_storage import JsonArticleRepository
 from storage.sqlite_storage import SQLiteArticleRepository
+from storage.factory import create_repository, is_postgres
+from storage.locks import collector_lock
+from config.postgres_feed_registry import PostgreSQLFeedRegistry
 from topics.algorithms.tfidf import TFIDFTopicExtractor
 
 
@@ -58,6 +60,7 @@ class ApplicationContainer:
         cache_duration: timedelta = timedelta(hours=6),
         log_level: int = logging.WARNING,
         misp_auto_update: bool | None = None,
+        database_url: str | None = None,
     ) -> None:
 
         self._configure_logging(log_level)
@@ -70,12 +73,13 @@ class ApplicationContainer:
         # Configuration and infrastructure
         ################################################################
 
-        self.repository: ArticleRepository = (
-            JsonArticleRepository(cache_file, cache_duration) if cache_file is not None
-            else SQLiteArticleRepository(database_file, cache_duration)
-        )
+        self.repository: ArticleRepository = create_repository(
+            database_file=database_file, cache_file=cache_file, database_url=database_url,
+            cache_duration=cache_duration)
+        self.lock_target = self.repository if is_postgres(self.repository) else database_file
 
-        self.feed_registry = (FeedRegistry(database_file, config_directory)
+        self.feed_registry = (PostgreSQLFeedRegistry(self.repository, config_directory) if is_postgres(self.repository)
+                              else FeedRegistry(database_file, config_directory)
                               if isinstance(self.repository, SQLiteArticleRepository) else None)
         self.configuration = (self.feed_registry.configuration() if self.feed_registry is not None
                               else ConfigLoader(config_directory).load())
@@ -155,6 +159,7 @@ class ApplicationContainer:
             enrichment_pipeline=self.enrichment_pipeline,
             configuration_loader=self.feed_registry.configuration if self.feed_registry else None,
             before_collection=self._refresh_threat_actor_catalog,
+            collection_lock_factory=lambda: collector_lock(self.lock_target),
         )
 
         self.search_service = SearchService(

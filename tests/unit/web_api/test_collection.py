@@ -16,7 +16,12 @@ HEADERS = {'X-Cyber-RSS-Request': '1'}
 def wait_finished(client):
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        state = client.get('/collection').json()
+        response = client.get('/collection')
+        if response.status_code == 429:
+            time.sleep(float(response.headers.get('Retry-After', '1')))
+            continue
+        assert response.status_code == 200, response.text
+        state = response.json()
         if state['status'] != 'running':
             return state
         time.sleep(.01)
@@ -141,7 +146,9 @@ feeds:
         container.fetcher.client.retries = 1
         return container.article_service
     try:
-        with TestClient(create_app(database_file=database, collection_service_factory=factory)) as client:
+        with TestClient(create_app(database_file=database, collection_service_factory=factory,
+                                  security=SecuritySettings(per_minute=10000, burst=10000,
+                                                            global_per_minute=10000, global_burst=10000))) as client:
             assert client.post('/collection', headers=HEADERS, json={}).status_code == 202
             state = wait_finished(client)
             assert state['status'] == 'completed'

@@ -38,6 +38,7 @@ class ArticleService:
         enrichment_pipeline: EnrichmentPipeline,
         configuration_loader=None,
         before_collection=None,
+        collection_lock_factory=None,
     ) -> None:
 
         self._repository = repository
@@ -46,6 +47,7 @@ class ArticleService:
         self._enrichment_pipeline = enrichment_pipeline
         self._configuration_loader = configuration_loader
         self._before_collection = before_collection
+        self.collection_lock_factory = collection_lock_factory
 
     def _available_categories(
             self,

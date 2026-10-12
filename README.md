@@ -2,7 +2,7 @@
 
 A modular cybersecurity RSS and threat intelligence reader built with Python 3.12+, with a CLI, browser frontend, HTTP API with manual collection, and separate collector worker.
 
-The application collects RSS/Atom feeds, normalizes articles, enriches them with cybersecurity metadata, stores them in a transactional SQLite archive, and exposes search, filtering, and topic extraction through a Typer and Rich CLI or an optional FastAPI interface.
+The application collects RSS/Atom feeds, normalizes articles, enriches them with cybersecurity metadata, stores them in a transactional SQLite or PostgreSQL archive, and exposes search, filtering, and topic extraction through a Typer and Rich CLI or an optional FastAPI interface.
 
 ## Status
 
@@ -48,7 +48,7 @@ The repository currently ships with 53 enabled feeds across 13 categories:
 - HTML cleanup and article normalization
 - Publication date parsing
 - Duplicate article handling
-- SQLite archive with refresh interval and historical retention
+- SQLite or optional PostgreSQL archive with refresh interval and historical retention
 - Forced refresh support
 
 Each normalized article can contain:
@@ -840,6 +840,20 @@ After generating a catalog, restart the collector and use `rss update --refresh`
 
 ## Storage and runtime data
 
+### PostgreSQL repositories
+
+Install `.[postgres]` and configure `CYBER_RSS_DATABASE_URL` or
+`CYBER_RSS_DATABASE_URL_FILE` to select PostgreSQL for the CLI, API and worker.
+SQLite remains the default. PostgreSQL supports transactional article/telemetry
+storage, managed feeds and distributed collector locks; local CVE/MISP caches
+still use the runtime directory. `rss-import-postgres` imports a SQLite archive
+read-only into an empty PostgreSQL destination. PostgreSQL backups use provider
+backups or `pg_dump` instead of the SQLite web snapshot controls.
+
+See [deploy/POSTGRESQL.md](deploy/POSTGRESQL.md) for configuration, migration,
+Docker secrets, backup guidance and tests. A separate `compose.postgres.yaml`
+provides a PostgreSQL stack without changing the existing SQLite stack.
+
 ### SQLite archive and legacy migration
 
 The CLI, API, and worker share `data/articles.sqlite3` by default. SQLite uses
@@ -1189,7 +1203,7 @@ Development dependencies:
 - Ambiguous malware and threat actor aliases are skipped.
 - Malware enrichment requires a generated `src/config/catalogs/malware.json`; an empty or missing catalog safely disables that enricher.
 - The API and frontend support optional authentication, LAN HTTPS and request limits; see [deploy/HTTPS.md](deploy/HTTPS.md). Multiple users/roles and general archive editing are not implemented.
-- No server database backend or general database migration framework is implemented.
+- PostgreSQL supports the archive, managed feeds and collection locks. Its backups use external PostgreSQL/provider tools; a general migration framework is not implemented.
 
 ## Roadmap
 
@@ -1211,9 +1225,11 @@ mapping, available through article details and `rss attack`.
 Implemented: explicit CVE lookup, offline CVE reference enrichment, persistent
 cache and vulnerability details in the CLI and web interface.
 
+Implemented: optional PostgreSQL repositories, feed configuration and database
+collector locks, with explicit SQLite import and a PostgreSQL Docker stack.
+
 Potential next stages:
 
-- support PostgreSQL repositories
 - add configurable retention and future schema migrations
 - add full-article retrieval and summarization
 - provide authenticated API operations
