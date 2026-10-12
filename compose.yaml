@@ -8,6 +8,9 @@ x-runtime: &runtime
   security_opt: [no-new-privileges:true]
   tmpfs:
     - /tmp
+  environment:
+    CYBER_RSS_RETENTION_DAYS: ${CYBER_RSS_RETENTION_DAYS:-0}
+    CYBER_RSS_RETENTION_MAX_ARTICLES: ${CYBER_RSS_RETENTION_MAX_ARTICLES:-0}
   volumes:
     - archive:/runtime
 

@@ -152,3 +152,17 @@ async def test_unexpected_fetch_failure_marks_configured_feeds(tmp_path):
     assert state['status'] == 'error'
     assert 'Collector failed' in state['last_error']
     assert state['last_success'] is None
+
+
+@pytest.mark.asyncio
+async def test_collection_reports_retention_removals(tmp_path):
+    from storage.retention import RetentionPolicy
+    repo = SQLiteArticleRepository(tmp_path/'archive.sqlite3', retention=RetentionPolicy(max_articles=1))
+    repo.save([Article(title='Old', source='Source', summary='', url='https://example.com/old')])
+    xml = b'<rss version="2.0"><channel><title>Feed</title><item><title>New</title><link>https://example.com/new</link></item></channel></rss>'
+    fetcher = AsyncMock()
+    fetcher.fetch_all.return_value = [FeedResult(feed=Feed(name='Source', url='https://example.com/feed'), parsed=feedparser.parse(xml))]
+    service = ArticleService(repository=repo, fetcher=fetcher, parser=RSSParser(), enrichment_pipeline=EnrichmentPipeline())
+    result = await service.update(force_refresh=True)
+    assert result.articles_saved == 1 and result.articles_pruned == 1
+    assert [a.title for a in repo.load()] == ['New']

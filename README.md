@@ -857,10 +857,10 @@ provides a PostgreSQL stack without changing the existing SQLite stack.
 ### SQLite archive and legacy migration
 
 The CLI, API, and worker share `data/articles.sqlite3` by default. SQLite uses
-WAL and transactions, with schema version 2 recorded in `PRAGMA user_version`.
-Every refresh upserts articles without deleting historical records. A failed or
-empty collection does not remove existing articles. There is no automatic
-retention limit; plan disk capacity or a future retention policy accordingly.
+WAL and transactions, with schema version 3 recorded in `PRAGMA user_version`.
+By default, refresh upserts articles and preserves all historical records.
+Optional retention can remove articles after a successful collection; a cycle
+with only failed feeds does not prune the archive.
 
 Articles are identified by URL, preserving path/query case and ignoring URL
 fragments. Entries without URLs use a hash of source, title, and publication
@@ -877,6 +877,61 @@ Import is transactional and runs once per database. The original JSON remains
 untouched; import does not mark old data as freshly collected. The legacy
 `JsonArticleRepository` is still available when explicitly injected or selected
 with `ApplicationContainer(cache_file=...)`.
+
+### Article retention and schema migrations
+
+Retention is disabled by default. Configure the same values for CLI, API and
+worker (in `.env.services` for user services, or `.env` for Docker Compose):
+
+```dotenv
+CYBER_RSS_RETENTION_DAYS=90
+CYBER_RSS_RETENTION_MAX_ARTICLES=10000
+```
+
+Each limit accepts `0` to disable it. Age uses the last time an article was
+observed during collection, **not its publication date**. Expired articles are
+removed first; the size limit then keeps the most recently observed articles,
+breaking ties by publication date and ID. A successful empty feed can trigger
+retention; cycles with only errors cannot. Feed configuration, telemetry,
+catalogs and backups are preserved. Collection and automatic pruning commit
+in one transaction; the CLI/web collection result reports the removed count.
+Opening the database, explicit saves and imports never trigger pruning.
+
+Preview without modifying or upgrading the selected database:
+
+```bash
+rss-retention --days 90 --max-articles 10000
+rss-retention --days 90 --max-articles 10000 --apply
+```
+
+Command overrides apply only to that invocation. `--apply` permanently removes
+matching articles and records the result in `metadata.last_retention`; make a
+backup first. Changing environment values requires restarting API/worker.
+Defaults keep the complete history. JSON legacy adapters do not support retention.
+
+Inspect and upgrade the configured backend (SQLite `--database` is optional):
+
+```bash
+rss-migrate --status
+rss-migrate --upgrade
+```
+
+Status and retention previews open the database read-only and never initialize
+it. Repository startup also applies pending migrations automatically. Before
+upgrading a running installation, stop API/worker, back up, run the explicit
+upgrade and restart all services, including the SQLite backup worker. An explicit
+SQLite upgrade creates a validated online snapshot before changing an existing
+schema and preserves existing backup copies. PostgreSQL requires a provider
+backup or `pg_dump` first; no automatic PostgreSQL backup is performed.
+
+Migrations are append-only, sequential and transactional, protected by SQLite
+write locks or PostgreSQL advisory locks. A failure rolls back the full pending
+chain. `schema_migrations` records version, name, checksum, time and adoption of
+legacy versions. Future/unknown schemas and changed applied migrations are
+rejected; downgrades are unsupported. To evolve a schema, append a migration to
+`src/storage/migrations.py` and test upgrading existing versions and rollback.
+Do not edit previously applied migrations. SQLite versions 1/2 upgrade to 3;
+PostgreSQL version 1 upgrades to 2. Older SQLite snapshots remain restorable.
 
 ### HTTP API and collector
 
@@ -1203,7 +1258,7 @@ Development dependencies:
 - Ambiguous malware and threat actor aliases are skipped.
 - Malware enrichment requires a generated `src/config/catalogs/malware.json`; an empty or missing catalog safely disables that enricher.
 - The API and frontend support optional authentication, LAN HTTPS and request limits; see [deploy/HTTPS.md](deploy/HTTPS.md). Multiple users/roles and general archive editing are not implemented.
-- PostgreSQL supports the archive, managed feeds and collection locks. Its backups use external PostgreSQL/provider tools; a general migration framework is not implemented.
+- PostgreSQL supports the archive, managed feeds and collection locks. Its backups use external PostgreSQL/provider tools; schema migrations are transactional and versioned.
 
 ## Roadmap
 
@@ -1228,9 +1283,10 @@ cache and vulnerability details in the CLI and web interface.
 Implemented: optional PostgreSQL repositories, feed configuration and database
 collector locks, with explicit SQLite import and a PostgreSQL Docker stack.
 
-Potential next stages:
+Implemented: configurable age/size retention, read-only previews and versioned,
+transactional SQLite/PostgreSQL schema migrations.
 
-- add configurable retention and future schema migrations
+Potential next stages:
 - add full-article retrieval and summarization
 - provide authenticated API operations
 - add structured exports and alert integrations

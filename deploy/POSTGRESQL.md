@@ -2,7 +2,9 @@
 
 SQLite remains the default. PostgreSQL stores articles, collection telemetry,
 managed feeds and refresh metadata in the `cyber_rss` schema. The application
-initializes schema version 1 transactionally and refuses unknown versions.
+initializes schema version 2 transactionally, upgrades version 1 and refuses
+unknown versions or changed migration checksums. See the README for
+`rss-migrate` and configurable retention.
 Use a dedicated database and a role allowed to create its application schema
 and tables. PostgreSQL 17 is tested; JSONB, arrays and advisory locks are required.
 
@@ -44,7 +46,7 @@ unset both URL variables to return to SQLite. An explicit programmatic
 available when explicitly selected.
 
 Each repository operation opens its own connection and commits/rolls back as a
-unit. Refresh upserts records without deleting historical articles. Complete
+unit. Refresh preserves history unless optional age/size retention is enabled. Complete
 article payloads (IOCs, malware, actors, ATT&CK and CVEs) are preserved in JSONB.
 Publication times use `TIMESTAMPTZ`; missing dates sort last. Filtering keeps
 Python casefold semantics and uses indexed source/category fields and tag arrays.

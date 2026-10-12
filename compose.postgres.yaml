@@ -11,6 +11,8 @@ x-runtime: &runtime
   volumes:
     - runtime:/runtime
   environment:
+    CYBER_RSS_RETENTION_DAYS: ${CYBER_RSS_RETENTION_DAYS:-0}
+    CYBER_RSS_RETENTION_MAX_ARTICLES: ${CYBER_RSS_RETENTION_MAX_ARTICLES:-0}
     CYBER_RSS_DATABASE_URL_FILE: /run/secrets/database_url
   secrets:
     - database_url

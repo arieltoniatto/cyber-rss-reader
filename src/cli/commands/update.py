@@ -33,6 +33,8 @@ def register(app: typer.Typer, services: CLIServices) -> None:
         typer.echo(f"Feeds failed     : {result.feeds_failed}")
         typer.echo(f"Articles parsed  : {result.articles_parsed}")
         typer.echo(f"Articles saved   : {result.articles_saved}")
+        if result.articles_pruned:
+            typer.echo(f"Articles pruned  : {result.articles_pruned}")
 
         if result.cache_used:
             typer.echo("Source           : Cache")

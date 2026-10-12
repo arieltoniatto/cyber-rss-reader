@@ -8,6 +8,7 @@ from feeds.models import FeedObservation
 from config.models import Feed
 from collections import Counter
 from storage.utils import article_key
+from storage.retention import RetentionResult
 
 
 class ArticleRepository(ABC):
@@ -18,7 +19,7 @@ class ArticleRepository(ABC):
     def begin_feed_collection(self, feeds: list[Feed]) -> None:
         """Legacy repositories do not persist collection telemetry."""
 
-    def save_collection(self, articles: list[Article], observations: list[FeedObservation]) -> None:
+    def save_collection(self, articles: list[Article], observations: list[FeedObservation]) -> RetentionResult | None:
         if articles:
             self.refresh(articles)
 

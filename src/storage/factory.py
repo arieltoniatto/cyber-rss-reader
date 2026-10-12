@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from config.paths import ARTICLE_DATABASE_FILE
 from storage.json_storage import JsonArticleRepository
 from storage.sqlite_storage import SQLiteArticleRepository
+from storage.retention import RetentionPolicy
 
 
 def database_url_from_environment():
@@ -22,14 +23,17 @@ def database_url_from_environment():
 
 
 def create_repository(*, database_file=ARTICLE_DATABASE_FILE, cache_file=None, database_url=None,
-                      cache_duration=timedelta(hours=6)):
+                      cache_duration=timedelta(hours=6), retention=None):
+    policy = RetentionPolicy.from_environment() if retention is None else retention
     if cache_file is not None:
+        if policy.enabled:
+            raise ValueError("Retention requires a SQLite or PostgreSQL archive")
         if database_url:
             raise ValueError('A JSON cache and a PostgreSQL URL cannot be selected together')
         return JsonArticleRepository(cache_file,cache_duration)
     value = database_url_from_environment() if database_url is None else database_url
     if not value:
-        return SQLiteArticleRepository(database_file,cache_duration)
+        return SQLiteArticleRepository(database_file,cache_duration,retention=policy)
     try:
         scheme = urlsplit(value).scheme
     except ValueError:
@@ -37,7 +41,7 @@ def create_repository(*, database_file=ARTICLE_DATABASE_FILE, cache_file=None, d
     if scheme not in ('postgres','postgresql'):
         raise ValueError('Unsupported database URL; use postgres:// or postgresql://')
     from storage.postgres_storage import PostgreSQLArticleRepository
-    return PostgreSQLArticleRepository(value,cache_duration)
+    return PostgreSQLArticleRepository(value,cache_duration,retention=policy)
 
 
 def is_postgres(repository):

@@ -16,6 +16,7 @@ class UpdateResult:
     articles_saved: int
     cache_used: bool
     feeds_failed: int = 0
+    articles_pruned: int = 0
 
 @dataclass(slots=True, frozen=True)
 class LatestQuery:

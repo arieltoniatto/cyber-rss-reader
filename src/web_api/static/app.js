@@ -459,7 +459,7 @@
       if(running) $("collection-status").textContent=data.source==="worker" ? "O coletor automático está trabalhando. Aguarde para iniciar outra coleta." : "Baixando e processando os feeds. Você pode continuar consultando os artigos.";
       else if(data.status==="failed") $("collection-status").textContent=data.error;
       else if(data.result?.cache_used) $("collection-status").textContent="O arquivo ainda está atualizado. Para baixar os feeds novamente, marque a opção de ignorar o intervalo.";
-      else if(data.result) $("collection-status").textContent=`Coleta concluída: ${number.format(data.result.feeds_downloaded)} feeds baixados, ${number.format(data.result.feeds_failed)} com erro e ${number.format(data.result.articles_saved)} artigos salvos ou atualizados.`;
+      else if(data.result) $("collection-status").textContent=`Coleta concluída: ${number.format(data.result.feeds_downloaded)} feeds baixados, ${number.format(data.result.feeds_failed)} com erro e ${number.format(data.result.articles_saved)} artigos salvos ou atualizados.${data.result.articles_pruned ? " " + number.format(data.result.articles_pruned) + " artigos removidos pela política de retenção." : ""}`;
       else $("collection-status").textContent="Busque novos artigos sem esperar a próxima coleta automática.";
       if(running || finished) await Promise.allSettled([loadSummary(), ...(state.view==="feeds" ? [loadFeeds()] : [])]);
       if(finished) await Promise.allSettled([loadFacets(),loadView()]);

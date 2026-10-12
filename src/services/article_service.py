@@ -7,6 +7,7 @@ from config.models import FeedConfiguration
 from feeds.models import FeedObservation
 from parser.dates import publication_key
 from storage.utils import article_key
+from storage.retention import RetentionResult
 
 from feeds.fetcher import RSSFetcher
 from parser.models import Article
@@ -183,7 +184,7 @@ class ArticleService:
             enriched = await self._enrichment_pipeline.enrich_many(articles) if articles else []
             completed_at = datetime.now(timezone.utc)
             observations = [replace(o, completed_at=completed_at) for o in observations]
-            self._repository.save_collection(enriched, observations)
+            retention = self._repository.save_collection(enriched, observations)
         except Exception as exc:
             failed = [replace(o, completed_at=datetime.now(timezone.utc), article_count=0,
                               error=o.error or f"Processing {type(exc).__name__}: {exc}")
@@ -199,6 +200,7 @@ class ArticleService:
             articles_parsed=len(articles),
             articles_saved=len({article_key(article) for article in enriched}),
             cache_used=False,
+            articles_pruned=retention.deleted if isinstance(retention, RetentionResult) else 0,
         )
 
     async def latest(

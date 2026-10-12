@@ -10,6 +10,7 @@ import re
 import sqlite3
 import tempfile
 import uuid
+from storage.migrations import SUPPORTED_SQLITE_VERSIONS
 
 _NAME = re.compile(r"articles-\d{8}T\d{12}Z-[a-f0-9]{8}\.sqlite3$")
 
@@ -33,10 +34,10 @@ def _validate(connection: sqlite3.Connection) -> dict:
     if connection.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
         raise ValueError('SQLite integrity check failed')
     version = connection.execute('PRAGMA user_version').fetchone()[0]
-    if version not in (1, 2):
+    if version not in SUPPORTED_SQLITE_VERSIONS:
         raise ValueError(f'Unsupported archive schema: {version}')
     articles = connection.execute('SELECT COUNT(*) FROM articles').fetchone()[0]
-    feeds = connection.execute('SELECT COUNT(*) FROM feed_status').fetchone()[0] if version == 2 else 0
+    feeds = connection.execute('SELECT COUNT(*) FROM feed_status').fetchone()[0] if version >= 2 else 0
     connection.execute('SELECT COUNT(*) FROM metadata').fetchone()
     return {'schema_version': version, 'articles': articles, 'feeds': feeds}
 
@@ -147,7 +148,7 @@ def _read_manifest(backup: Path) -> dict:
     if (not isinstance(manifest, dict) or manifest.get('file') != backup.name or
             not isinstance(manifest.get('sha256'), str) or
             not re.fullmatch(r'[a-f0-9]{64}', manifest['sha256']) or
-            manifest.get('schema_version') not in (1, 2) or
+            manifest.get('schema_version') not in SUPPORTED_SQLITE_VERSIONS or
             any(type(manifest.get(key)) is not int or manifest[key] < 0 for key in ('articles', 'feeds'))):
         raise ValueError('Invalid backup manifest')
     created = datetime.fromisoformat(manifest['created_at'])

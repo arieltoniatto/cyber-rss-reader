@@ -18,7 +18,7 @@ def test_sqlite_default_and_explicit_legacy_json(tmp_path):
 def test_environment_url_secret_file_and_explicit_precedence(tmp_path,monkeypatch):
     from storage import postgres_storage
     class FakeRepository:
-        def __init__(self,url,duration):self.url=url
+        def __init__(self,url,duration,**kwargs):self.url=url
     monkeypatch.setattr(postgres_storage,'PostgreSQLArticleRepository',FakeRepository)
     monkeypatch.setenv('CYBER_RSS_DATABASE_URL','postgresql://server/rss')
     assert create_repository().url=='postgresql://server/rss'

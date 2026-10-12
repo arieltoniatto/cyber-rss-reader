@@ -6,8 +6,10 @@ import hashlib
 from parser.dates import normalize_datetime
 from storage.interfaces import ArticleRepository
 from storage.utils import article_from_dict, article_key, article_to_dict
+from storage.migrations import migrate_postgres
+from storage.retention import RetentionPolicy, prune
 
-LOCK_KEYS = {'schema': 73941101, 'collector': 73941102, 'worker-instance': 73941103, 'feed-registry': 73941104, 'import': 73941105}
+LOCK_KEYS = {'schema': 73941101, 'collector': 73941102, 'worker-instance': 73941103, 'feed-registry': 73941104, 'import': 73941105, 'retention': 73941106}
 
 
 def driver():
@@ -26,32 +28,21 @@ def key_hash(identifier):
 class PostgreSQLArticleRepository(ArticleRepository):
     backend = 'postgresql'
 
-    def __init__(self, database_url, cache_duration=timedelta(hours=6)):
+    def __init__(self, database_url, cache_duration=timedelta(hours=6), *, retention=None):
         self._database_url = database_url
         self.cache_duration = cache_duration
+        self.retention = retention or RetentionPolicy()
         self._psycopg, self._jsonb = driver()
         with self._connection() as connection:
-            connection.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_KEYS['schema'],))
-            connection.execute('CREATE SCHEMA IF NOT EXISTS cyber_rss')
-            connection.execute('CREATE TABLE IF NOT EXISTS cyber_rss.metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
-            version = connection.execute("SELECT value FROM cyber_rss.metadata WHERE key='schema_version'").fetchone()
-            if version and version[0] != '1':
-                raise ValueError('Unsupported PostgreSQL archive schema version')
-            connection.execute('''CREATE TABLE IF NOT EXISTS cyber_rss.articles (
-                key_hash BYTEA PRIMARY KEY,id TEXT NOT NULL,payload JSONB NOT NULL,
-                published TIMESTAMPTZ,source TEXT NOT NULL,category TEXT,tags TEXT[] NOT NULL,
-                first_seen TIMESTAMPTZ NOT NULL,last_seen TIMESTAMPTZ NOT NULL)''')
-            connection.execute('CREATE INDEX IF NOT EXISTS articles_published ON cyber_rss.articles(published DESC,key_hash)')
-            connection.execute('CREATE INDEX IF NOT EXISTS articles_source ON cyber_rss.articles(source,published DESC)')
-            connection.execute('CREATE INDEX IF NOT EXISTS articles_category ON cyber_rss.articles(category,published DESC)')
-            connection.execute('CREATE INDEX IF NOT EXISTS articles_tags ON cyber_rss.articles USING GIN(tags)')
-            connection.execute('''CREATE TABLE IF NOT EXISTS cyber_rss.feed_status (
-                url_hash BYTEA PRIMARY KEY,url TEXT NOT NULL,name TEXT NOT NULL,category TEXT,
-                status TEXT NOT NULL CHECK(status IN ('collecting','success','error')),
-                last_attempt TIMESTAMPTZ NOT NULL,last_success TIMESTAMPTZ,last_error TEXT,
-                article_count INTEGER NOT NULL DEFAULT 0,last_success_article_count INTEGER,
-                warnings JSONB NOT NULL DEFAULT '[]'::jsonb)''')
-            self._set_metadata(connection, 'schema_version', '1')
+            migrate_postgres(connection, LOCK_KEYS['schema'])
+
+    def prune(self, policy=None, *, dry_run=True, now=None):
+        with self._connection() as connection:
+            if dry_run:
+                connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            else:
+                connection.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_KEYS['retention'],))
+            return prune(connection, policy or self.retention, backend='postgresql', dry_run=dry_run, now=now)
 
     @contextmanager
     def _connection(self, *, autocommit=False):
@@ -101,8 +92,12 @@ class PostgreSQLArticleRepository(ArticleRepository):
         if not articles:
             return
         with self._connection() as connection:
+            if self.retention.enabled:
+                connection.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_KEYS['retention'],))
             self._upsert(connection, articles)
             self._set_metadata(connection,'last_refresh',datetime.now(timezone.utc).isoformat())
+            if self.retention.enabled:
+                prune(connection, self.retention, backend='postgresql')
 
     def load(self):
         with self._connection() as connection:
@@ -157,7 +152,10 @@ class PostgreSQLArticleRepository(ArticleRepository):
                                    (key_hash(url),url,feed.name,feed.category,now))
 
     def save_collection(self, articles, observations):
+        apply_retention = self.retention.enabled and any(item.error is None for item in observations)
         with self._connection() as connection:
+            if apply_retention:
+                connection.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_KEYS['retention'],))
             self._upsert(connection, articles)
             if articles:
                 self._set_metadata(connection,'last_refresh',datetime.now(timezone.utc).isoformat())
@@ -174,6 +172,8 @@ class PostgreSQLArticleRepository(ArticleRepository):
                                     normalize_datetime(observation.attempted_at),normalize_datetime(observation.completed_at) if success else None,
                                     observation.error,observation.article_count,observation.article_count if success else None,
                                     self._jsonb(observation.warnings)))
+            if apply_retention:
+                return prune(connection, self.retention, backend='postgresql')
 
     def feed_status(self):
         from psycopg.rows import dict_row

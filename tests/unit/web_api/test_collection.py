@@ -54,7 +54,7 @@ def test_manual_collection_is_nonblocking_and_excludes_duplicates(tmp_path):
         state = wait_finished(client)
         assert state['status'] == 'completed'
         assert state['result'] == {'feeds_downloaded': 2, 'articles_parsed': 7,
-                                   'articles_saved': 6, 'cache_used': False, 'feeds_failed': 1}
+                                   'articles_saved': 6, 'cache_used': False, 'feeds_failed': 1, 'articles_pruned': 0}
         assert state['completed_at']
         assert calls == [True]
         with collector_lock(database):

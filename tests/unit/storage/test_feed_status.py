@@ -8,6 +8,7 @@ from config.models import Feed
 from feeds.models import FeedObservation
 from parser.models import Article
 from storage.sqlite_storage import SQLiteArticleRepository
+from storage.migrations import SQLITE_SCHEMA_VERSION
 from storage.utils import article_key, article_to_dict
 
 
@@ -88,5 +89,5 @@ def test_schema_v1_migration_preserves_articles_and_metadata(tmp_path):
     assert repo.load() == [article]
     assert repo.feed_status() == []
     with sqlite3.connect(database) as connection:
-        assert connection.execute('PRAGMA user_version').fetchone()[0] == 2
+        assert connection.execute('PRAGMA user_version').fetchone()[0] == SQLITE_SCHEMA_VERSION
         assert connection.execute("SELECT value FROM metadata WHERE key='legacy_json_imported'").fetchone()[0] == 'old-cache'

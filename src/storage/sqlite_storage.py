@@ -13,44 +13,27 @@ from storage.json_storage import JsonArticleRepository
 from storage.utils import article_from_dict, article_key, article_to_dict
 from feeds.models import FeedObservation
 from config.models import Feed
+from storage.migrations import migrate_sqlite
+from storage.retention import RetentionPolicy, RetentionResult, prune
 
 
 class SQLiteArticleRepository(ArticleRepository):
-    """Transactional archive. Refresh upserts articles without deleting history."""
+    """Transactional archive with optional retention after collection."""
 
     def __init__(self, database_file: Path,
-                 cache_duration: timedelta = timedelta(hours=6)) -> None:
+                 cache_duration: timedelta = timedelta(hours=6), *, retention: RetentionPolicy | None = None) -> None:
         self.database_file = database_file
         self.cache_duration = cache_duration
+        self.retention = retention or RetentionPolicy()
         database_file.parent.mkdir(parents=True, exist_ok=True)
         with self._connection() as connection:
+            migrate_sqlite(connection)
             connection.execute("PRAGMA journal_mode=WAL")
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
-                raise ValueError(f"Unsupported database schema version: {version}")
-            connection.executescript("""
-                BEGIN IMMEDIATE;
-                CREATE TABLE IF NOT EXISTS articles (
-                    id TEXT PRIMARY KEY, payload TEXT NOT NULL,
-                    published TEXT, source TEXT NOT NULL, category TEXT,
-                    tags TEXT NOT NULL, first_seen TEXT NOT NULL,
-                    last_seen TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS articles_published ON articles(published DESC, id);
-                CREATE INDEX IF NOT EXISTS articles_source ON articles(source, published DESC);
-                CREATE INDEX IF NOT EXISTS articles_category ON articles(category, published DESC);
-                CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS feed_status (
-                    url TEXT PRIMARY KEY, name TEXT NOT NULL, category TEXT,
-                    status TEXT NOT NULL CHECK(status IN ('collecting', 'success', 'error')),
-                    last_attempt TEXT NOT NULL, last_success TEXT, last_error TEXT,
-                    article_count INTEGER NOT NULL DEFAULT 0,
-                    last_success_article_count INTEGER,
-                    warnings TEXT NOT NULL DEFAULT '[]'
-                );
-                PRAGMA user_version=2;
-                COMMIT;
-            """)
+
+    def prune(self, policy=None, *, dry_run=True, now=None):
+        with self._connection() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            return prune(connection, policy or self.retention, backend='sqlite', dry_run=dry_run, now=now)
 
     @contextmanager
     def _connection(self):
@@ -86,6 +69,8 @@ class SQLiteArticleRepository(ArticleRepository):
             self._upsert(connection, articles)
             connection.execute("INSERT OR REPLACE INTO metadata VALUES ('last_refresh', ?)",
                                (datetime.now(timezone.utc).isoformat(),))
+            if self.retention.enabled:
+                prune(connection, self.retention, backend='sqlite')
 
     def load(self) -> list[Article]:
         with self._connection() as connection:
@@ -129,7 +114,7 @@ class SQLiteArticleRepository(ArticleRepository):
                         status='collecting', last_attempt=excluded.last_attempt
                 """, (str(feed.url), feed.name, feed.category, now))
 
-    def save_collection(self, articles: list[Article], observations: list[FeedObservation]) -> None:
+    def save_collection(self, articles: list[Article], observations: list[FeedObservation]) -> RetentionResult | None:
         """Commit articles and their collection outcomes together."""
         with self._connection() as connection:
             self._upsert(connection, articles)
@@ -158,6 +143,8 @@ class SQLiteArticleRepository(ArticleRepository):
                       observation.error, observation.article_count,
                       observation.article_count if success else None,
                       json.dumps(observation.warnings)))
+            if self.retention.enabled and any(item.error is None for item in observations):
+                return prune(connection, self.retention, backend='sqlite')
 
     def feed_status(self) -> list[dict]:
         with self._connection() as connection:

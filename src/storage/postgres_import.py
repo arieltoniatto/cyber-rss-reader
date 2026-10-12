@@ -9,6 +9,7 @@ import sqlite3
 from parser.dates import normalize_datetime
 from storage.postgres_storage import LOCK_KEYS, key_hash
 from storage.utils import article_from_dict, article_key, article_to_dict
+from storage.migrations import SUPPORTED_SQLITE_VERSIONS
 
 
 def sqlite_snapshot(source: Path):
@@ -19,10 +20,10 @@ def sqlite_snapshot(source: Path):
         connection.row_factory=sqlite3.Row
         connection.execute('BEGIN')
         version=connection.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (1,2) or connection.execute('PRAGMA integrity_check').fetchone()[0]!='ok':
+        if version not in SUPPORTED_SQLITE_VERSIONS or connection.execute('PRAGMA integrity_check').fetchone()[0]!='ok':
             raise ValueError('Unsupported or damaged SQLite archive')
         articles=[dict(row) for row in connection.execute('SELECT * FROM articles ORDER BY id')]
-        feeds=[dict(row) for row in connection.execute('SELECT * FROM feed_status ORDER BY url')] if version==2 else []
+        feeds=[dict(row) for row in connection.execute('SELECT * FROM feed_status ORDER BY url')] if version>=2 else []
         metadata=dict(connection.execute('SELECT key,value FROM metadata'))
     # Validate before opening a transaction in the destination.
     for row in articles:

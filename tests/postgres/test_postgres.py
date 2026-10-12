@@ -20,6 +20,7 @@ from config.feed_registry import FeedConflict,FeedNotFound,FeedRegistry
 from feeds.models import FeedObservation,FeedResult
 from parser.models import Article,IOC,IOCType,AttackMapping
 from storage.postgres_storage import PostgreSQLArticleRepository
+from storage.migrations import POSTGRES_SCHEMA_VERSION
 from storage.sqlite_storage import SQLiteArticleRepository
 from storage.postgres_import import import_sqlite,sqlite_snapshot
 from storage.locks import collector_lock,worker_instance_lock,CollectorBusy
@@ -288,7 +289,7 @@ def test_unknown_schema_version_fails_without_rewriting_existing_archive(repo):
             assert connection.execute("SELECT value FROM cyber_rss.metadata WHERE key='schema_version'").fetchone()[0]=='99'
         assert repo.load()==[article()]
     finally:
-        with repo._connection() as connection:repo._set_metadata(connection,'schema_version','1')
+        with repo._connection() as connection:repo._set_metadata(connection,'schema_version',str(POSTGRES_SCHEMA_VERSION))
 
 
 def test_same_timestamp_and_case_sensitive_facets_have_sqlite_order(repo,tmp_path):
@@ -299,3 +300,74 @@ def test_same_timestamp_and_case_sensitive_facets_have_sqlite_order(repo,tmp_pat
     assert repo.load()==sqlite.load()
     assert repo.latest(limit=3,offset=2)==sqlite.latest(limit=3,offset=2)
     assert repo.filters()==sqlite.filters()
+
+
+def test_retention_age_size_and_readonly_preview(repo):
+    from storage.maintenance import preview_retention
+    from storage.retention import RetentionPolicy
+    repo.save([article(i) for i in range(5)])
+    now=datetime.now(timezone.utc)
+    with repo._connection() as connection:
+        for i,days in enumerate([100,40,3,2,1]):
+            connection.execute('UPDATE cyber_rss.articles SET last_seen=%s WHERE id=%s', (now-timedelta(days=days),article_key(article(i))))
+    policy=RetentionPolicy(30,2)
+    preview=preview_retention(policy,database_url=URL)
+    assert (preview.expired,preview.over_limit,preview.deleted)==(2,1,0)
+    assert len(repo.load())==5
+    result=repo.prune(policy,dry_run=False,now=now)
+    assert result.deleted==3
+    assert {a.url for a in repo.load()}=={article(3).url,article(4).url}
+    with repo._connection() as connection:
+        assert json.loads(connection.execute("SELECT value FROM cyber_rss.metadata WHERE key='last_retention'").fetchone()[0])['deleted']==3
+
+
+def test_retention_automatic_atomicity_and_failed_collections(repo):
+    from storage.retention import RetentionPolicy
+    repo.retention=RetentionPolicy(max_articles=1)
+    repo.save([article(0),article(1)])
+    feed=Feed(name='Source',url='https://example.com/rss',category='news')
+    now=datetime.now(timezone.utc)
+    failed=FeedObservation(feed=feed,attempted_at=now,completed_at=now,error='Offline')
+    assert repo.save_collection([], [failed]) is None
+    assert len(repo.load())==2
+    success=FeedObservation(feed=feed,attempted_at=now+timedelta(seconds=1),completed_at=now+timedelta(seconds=1),article_count=0)
+    assert repo.save_collection([], [success]).deleted==1
+    with pytest.raises(AttributeError):
+        repo.refresh([article(2),replace(article(3),tags=[None])])
+    assert len(repo.load())==1
+
+
+def test_postgres_migration_chain_rollback_and_checksum_guard(repo):
+    from storage.migrations import Migration, POSTGRES_MIGRATIONS, migrate_postgres
+    from storage.postgres_storage import LOCK_KEYS
+    repo.save([article()])
+    bad=Migration(3,'broken',('CREATE TABLE cyber_rss.rollback_marker (value TEXT)','INVALID SQL'))
+    with pytest.raises(psycopg.errors.SyntaxError):
+        with repo._connection() as connection:
+            migrate_postgres(connection,LOCK_KEYS['schema'],(*POSTGRES_MIGRATIONS,bad))
+    with repo._connection() as connection:
+        assert connection.execute("SELECT to_regclass('cyber_rss.rollback_marker')").fetchone()[0] is None
+        assert connection.execute('SELECT COUNT(*) FROM cyber_rss.schema_migrations').fetchone()[0]==2
+        connection.execute("UPDATE cyber_rss.schema_migrations SET checksum='tampered' WHERE version=1")
+    try:
+        with pytest.raises(ValueError,match='checksum mismatch'):
+            PostgreSQLArticleRepository(URL)
+        assert repo.load()==[article()]
+    finally:
+        with repo._connection() as connection:
+            connection.execute('UPDATE cyber_rss.schema_migrations SET checksum=%s WHERE version=1',(POSTGRES_MIGRATIONS[0].checksum,))
+
+
+def test_postgres_legacy_upgrade_preserves_archive(repo):
+    from storage.maintenance import postgres_status
+    repo.save([article()])
+    with repo._connection() as connection:
+        connection.execute('DROP TABLE cyber_rss.schema_migrations')
+        connection.execute('DROP INDEX cyber_rss.articles_last_seen')
+        repo._set_metadata(connection,'schema_version','1')
+    assert postgres_status(URL)['current_version']==1
+    upgraded=PostgreSQLArticleRepository(URL)
+    assert upgraded.load()==[article()]
+    report=postgres_status(URL)
+    assert report['current_version']==2 and not report['pending']
+    assert [item['adopted'] for item in report['history']]==[True,False]
