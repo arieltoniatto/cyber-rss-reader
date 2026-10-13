@@ -733,6 +733,12 @@ No Python code changes are required.
 
 Disabled feeds are excluded when the configuration is loaded.
 
+The SANS Internet Storm Center uses `https://isc.sans.edu/rssfeed_full.xml`
+for diary content. The parser excludes Stormcast announcements from the SANS
+diary feeds (`rssfeed.xml` and `rssfeed_full.xml`); episodes are collected through
+the separate `dailypodcast.xml` feed. This filter applies to future collections
+and does not remove previously archived announcements.
+
 ### Add a category
 
 Create a new YAML file under `src/config/feeds/`:

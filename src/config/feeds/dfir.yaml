@@ -9,7 +9,7 @@ feeds:
     category: dfir
 
   - name: SANS Internet Storm Center
-    url: https://isc.sans.edu/rssfeed.xml
+    url: https://isc.sans.edu/rssfeed_full.xml
     enabled: true
     description: Incident handling observations and technical diaries.
     category: dfir

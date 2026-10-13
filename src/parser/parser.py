@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Iterable
+import re
+from urllib.parse import urlsplit
 
 from feeds.models import FeedResult
 from parser.utils import parse_published, parse_tags
@@ -31,14 +33,22 @@ class RSSParser:
 
             category = feed.feed.category
 
+            feed_url = urlsplit(str(feed.feed.url))
+            sans_diaries = (
+                feed_url.hostname == "isc.sans.edu"
+                and feed_url.path in {"/rssfeed.xml", "/rssfeed_full.xml"}
+            )
+
             for entry in feed.parsed.entries:
 
+                title = first_available(entry, "title") or "(Untitled)"
+                # Stormcast announcements also appear in the diary feed, with
+                # different URLs from the dedicated podcast feed.
+                if sans_diaries and re.match(r"^(?:ISC|SANS)\s+Stormcast\b", title, re.IGNORECASE):
+                    continue
+
                 article = Article(
-                    title=first_available(
-                        entry,
-                        "title",
-                    )
-                    or "(Untitled)",
+                    title=title,
 
                     source=source,
 
