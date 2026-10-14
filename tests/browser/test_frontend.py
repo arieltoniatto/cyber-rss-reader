@@ -1,5 +1,6 @@
 """Browser tests: install .[dev,browser], then playwright install chromium."""
 from datetime import datetime, timezone
+from dataclasses import replace
 import os
 import re
 import socket
@@ -30,6 +31,14 @@ def frontend_server(tmp_path_factory):
                         tags=['ransomware' if i % 2 == 0 else 'research'], malware=['BlackEnergy'],
                         threat_actors=['APT28'], iocs=[IOC(IOCType.CVE, 'CVE-2026-1234')],
                         published=datetime(2026, 1, i + 1, tzinfo=timezone.utc)) for i in range(26)]
+    # Exercise RSS parsing, persistence, API serialization and the detail view.
+    import feedparser
+    from feeds.models import FeedResult
+    from parser.parser import RSSParser
+    body = articles[24].summary + ' Extended research evidence.' * 80 + ' End of extended feed content.'
+    xml = f'<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Research</title><item><title>Report</title><description>Short preview.</description><content:encoded><![CDATA[<p>{body}</p>]]></content:encoded></item></channel></rss>'
+    parsed = RSSParser().parse([FeedResult(feed=Feed(name='Source A', url='https://example.com/feed'), parsed=feedparser.parse(xml.encode()))])[0]
+    articles[24] = replace(articles[24], summary=parsed.summary)
     articles.append(Article(title='<img src=x onerror="window.__xss=1">', source='Source A',
                             category='news', summary='<script>window.__xss=1</script>',
                             url='javascript:window.__xss=1', tags=['ransomware'],
@@ -580,3 +589,17 @@ def test_postgres_external_backups_do_not_offer_sqlite_zip_controls(page):
     expect(page.locator('#backups-format-note')).to_contain_text('Retenção e restauração')
     expect(page.locator('#backups-format-note')).not_to_contain_text('ZIP')
     expect(page.locator('#backup-list')).to_be_empty()
+
+
+
+def test_extended_feed_text_is_complete_in_details_and_short_in_list(page):
+    card = page.locator('.article-card').filter(has=page.get_by_role('button', name='Malware report 24', exact=True))
+    preview = card.locator('.article-summary')
+    expect(preview).to_be_visible()
+    assert len(preview.inner_text()) == 600
+    expect(preview).not_to_contain_text('End of extended feed content.')
+    card.get_by_role('button', name='Malware report 24', exact=True).click()
+    expect(page.locator('.detail-summary')).to_contain_text('End of extended feed content.')
+    assert len(page.locator('.detail-summary').inner_text()) > 2000
+    page.reload()
+    expect(page.locator('.detail-summary')).to_contain_text('End of extended feed content.')

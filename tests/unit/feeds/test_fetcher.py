@@ -45,3 +45,28 @@ def test_html_response_is_a_failure_even_with_http_success():
     result = asyncio.run(fetcher.fetch_all())[0]
     assert result.error is not None
     assert 'not an RSS/Atom feed' in result.error
+
+
+def test_empty_response_is_reported_and_next_collection_recovers():
+    config = FeedConfiguration(source_directory=Path('.'), categories=[
+        FeedCategory(category='news', feeds=[Feed(name='Check Point Research', url='https://research.checkpoint.com/feed/')])])
+    fetcher = RSSFetcher(config)
+    fetcher.client.fetch = AsyncMock(side_effect=[b'', b' \r\n\t',
+        b'<rss version="2.0"><channel><title>Research</title><item><title>Report</title></item></channel></rss>'])
+    for _ in range(2):
+        result = asyncio.run(fetcher.fetch_all())[0]
+        assert result.error == 'ValueError: Empty response from feed server'
+        assert result.parsed.entries == []
+    recovered = asyncio.run(fetcher.fetch_all())[0]
+    assert recovered.error is None and len(recovered.parsed.entries) == 1
+
+
+def test_parser_result_without_version_is_not_an_attribute_error(monkeypatch):
+    import feedparser
+    config = FeedConfiguration(source_directory=Path('.'), categories=[
+        FeedCategory(category='news', feeds=[Feed(name='Source', url='https://example.com/feed')])])
+    fetcher = RSSFetcher(config)
+    fetcher.client.fetch = AsyncMock(return_value=b'Unexpected response')
+    monkeypatch.setattr('feeds.fetcher.feedparser.parse', lambda xml: feedparser.FeedParserDict(entries=[], feed={}, bozo=False))
+    result = asyncio.run(fetcher.fetch_all())[0]
+    assert result.error == 'ValueError: Response is not an RSS/Atom feed'

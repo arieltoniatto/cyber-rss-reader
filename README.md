@@ -884,6 +884,23 @@ untouched; import does not mark old data as freshly collected. The legacy
 `JsonArticleRepository` is still available when explicitly injected or selected
 with `ApplicationContainer(cache_file=...)`.
 
+### Text supplied by RSS and Atom feeds
+
+The parser stores the longest readable text supplied by each entry: RSS
+`content:encoded` or Atom `content`, with `summary`/`description` as fallback.
+Plain text, HTML and XHTML are supported; HTML is converted to text. Alternative
+content representations are compared rather than concatenated. Empty,
+unsupported or external-only content is ignored. No article pages or external
+content URLs are fetched, and stored text is not automatically summarized or
+truncated.
+
+The web list keeps a preview of at most 600 characters and two visible lines.
+Article details show all stored feed text, with scrolling for longer entries.
+Search and enrichment also use this text. Existing entries receive richer text
+when they appear again in a collection; archived entries absent from current
+feeds keep their existing text. A feed that publishes only a short excerpt
+cannot provide more text without visiting its article page.
+
 ### Article retention and schema migrations
 
 Retention is disabled by default. Configure the same values for CLI, API and
@@ -1060,8 +1077,8 @@ relative relevance within the archive, not recent growth or threat severity.
 Click a term to search articles with the previous category/source/tag filters
 cleared. Topics load only when their section is opened and recalculate when
 refreshed or after an observed collection completes. Loading, empty results,
-connection failures and retry are supported. The ranking uses titles and feed
-summaries rather than full article bodies.
+connection failures and retry are supported. The ranking uses titles and the
+text supplied by feeds, including embedded content when available. It does not fetch original article pages.
 
 The feed view shows errors, latest attempts/successes, successful article counts,
 and collection warnings. **Atualizar tela** reloads the archive and feed state;
@@ -1259,7 +1276,7 @@ Development dependencies:
 ## Known limitations
 
 - SQLite is the default backend; text search and topic extraction still load the archive into memory.
-- The CLI does not currently fetch or index complete article bodies.
+- The CLI indexes text supplied by feeds; it does not fetch article bodies from original webpages.
 - ATT&CK mapping recognizes explicit IDs/references and catalog relationships; semantic classification of article behavior into techniques is not implemented.
 - Ambiguous malware and threat actor aliases are skipped.
 - Malware enrichment requires a generated `src/config/catalogs/malware.json`; an empty or missing catalog safely disables that enricher.

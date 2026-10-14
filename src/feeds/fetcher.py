@@ -86,8 +86,11 @@ class RSSFetcher:
 
                 xml = await self.client.fetch(str(feed.url))
 
+                if not xml.strip():
+                    raise ValueError("Empty response from feed server")
+
                 parsed = feedparser.parse(xml)
-                if not parsed.version:
+                if not parsed.get("version"):
                     raise ValueError("Response is not an RSS/Atom feed")
 
                 warnings: list[str] = []

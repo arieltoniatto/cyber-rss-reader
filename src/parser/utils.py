@@ -70,6 +70,32 @@ def first_available(entry: Any, *fields: str) -> str | None:
     return None
 
 
+def article_text(entry: Any) -> str:
+    """Use the longest readable text embedded in the feed, without fetching URLs.
+
+    feedparser normalizes RSS content:encoded and Atom content to a list of
+    content records. Alternative formats/translations are candidates, rather
+    than concatenated copies of the same article.
+    """
+    candidates = [first_available(entry, "summary", "description") or ""]
+    content = entry.get("content", [])
+    if not isinstance(content, (list, tuple)):
+        return candidates[0]
+    for record in content:
+        if not isinstance(record, dict):
+            continue
+        value = record.get("value")
+        media_type = record.get("type", "text/plain")
+        if not isinstance(value, str) or not isinstance(media_type, str):
+            continue
+        if media_type.split(";", 1)[0].strip().lower() not in {
+            "text/plain", "text/html", "application/xhtml+xml",
+        }:
+            continue
+        candidates.append(clean_html(value))
+    return max(candidates, key=len)
+
+
 def parse_published(entry) -> datetime | None:
 
     parsed = (

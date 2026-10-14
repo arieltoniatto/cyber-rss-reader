@@ -5,7 +5,7 @@ import re
 from urllib.parse import urlsplit
 
 from feeds.models import FeedResult
-from parser.utils import parse_published, parse_tags
+from parser.utils import article_text, parse_published, parse_tags
 
 from .models import Article
 from .utils import (
@@ -62,11 +62,7 @@ class RSSParser:
 
                     published=parse_published(entry),
 
-                    summary=first_available(
-                        entry,
-                        "summary",
-                        "description",
-                    ) or "",
+                    summary=article_text(entry),
 
                     url=first_available(
                         entry,

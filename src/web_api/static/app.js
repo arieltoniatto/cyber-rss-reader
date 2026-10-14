@@ -435,7 +435,7 @@
     const actions=element("div","detail-actions"),url=safeArticleURL(article.url);
     if(url) {const link=element("a","primary-button","Abrir artigo original ↗");link.href=url;link.target="_blank";link.rel="noopener noreferrer";actions.append(link);}
     else actions.append(element("small","","Link original indisponível."));
-    actions.append(element("small","","O resumo é o conteúdo disponibilizado pelo feed."));content.append(actions);
+    actions.append(element("small","","Este texto foi disponibilizado pelo feed."));content.append(actions);
   }
   async function openDetail(id,changeURL=true) {
     detailController?.abort();const controller=detailController=new AbortController();

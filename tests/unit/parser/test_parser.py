@@ -57,3 +57,60 @@ def test_stormcast_is_preserved_in_podcast_and_other_feeds(url):
     assert articles[0].url == "https://isc.sans.edu/podcastdetail/10134"
     assert articles[0].category == "podcasts"
     assert articles[0].summary == "Episode notes."
+
+
+@pytest.mark.parametrize('format', ['rss', 'atom-html', 'atom-xhtml'])
+def test_embedded_content_is_used_without_truncation(format):
+    body = 'Detailed research and CVE-2026-1234 evidence. ' * 30 + 'Final paragraph.'
+    if format == 'rss':
+        xml = f'''<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+          <channel><title>Research</title><item><title>Report</title>
+          <link>https://example.com/report</link><description>Short preview.</description>
+          <content:encoded><![CDATA[<p>{body}</p>]]></content:encoded>
+          </item></channel></rss>'''
+    elif format == 'atom-html':
+        xml = f'''<feed xmlns="http://www.w3.org/2005/Atom"><title>Research</title>
+          <entry><title>Report</title><id>https://example.com/report</id>
+          <link href="https://example.com/report"/><summary>Short preview.</summary>
+          <content type="html"><![CDATA[<p>{body}</p>]]></content></entry></feed>'''
+    else:
+        xml = f'''<feed xmlns="http://www.w3.org/2005/Atom"><title>Research</title>
+          <entry><title>Report</title><id>https://example.com/report</id>
+          <summary>Short preview.</summary><content type="xhtml">
+          <div xmlns="http://www.w3.org/1999/xhtml"><p>{body}</p></div>
+          </content></entry></feed>'''
+    parsed = feedparser.parse(xml.encode())
+    feed = Feed(name='Research', url='https://example.com/feed')
+    article = RSSParser().parse([FeedResult(feed=feed, parsed=parsed)])[0]
+    assert article.summary == body
+    assert len(article.summary) > 600
+
+
+@pytest.mark.parametrize('content', [None, 'invalid', [{}], [None],
+    [{'value': 42}], [{'value': '<p> </p>', 'type': 'text/html'}],
+    [{'value': 'x'*1000, 'type': 'image/png'}],
+    [{'src': 'https://example.com/full-text', 'type': 'text/html'}]])
+def test_unusable_or_external_content_keeps_summary(content):
+    from parser.utils import article_text
+    entry = feedparser.FeedParserDict(summary='Existing summary.', content=content)
+    assert article_text(entry) == 'Existing summary.'
+
+
+def test_longest_readable_variant_keeps_summary_if_content_is_shorter():
+    from parser.utils import article_text
+    entry = feedparser.FeedParserDict(summary='A longer summary with more useful information.', content=[
+        {'value': '<p>Short.</p>', 'type': 'text/html'},
+        {'value': 'Alternative.', 'type': 'text/plain'},
+    ])
+    assert article_text(entry) == entry.summary
+    entry.content.append({'value': 'Extended article &amp; evidence. '*10, 'type': 'text/plain'})
+    assert article_text(entry) == ('Extended article & evidence. '*10).strip()
+
+
+def test_content_only_feed_preserves_readable_text_and_ignores_markup():
+    from parser.utils import article_text
+    entry = feedparser.FeedParserDict(content=[
+        {'type': 'text/html', 'value': '<p>Report &amp; evidence.</p><script>alert(1)</script><p>Second paragraph.</p>'},
+        {'type': 'text/plain', 'value': 'Short version.'},
+    ])
+    assert article_text(entry) == 'Report & evidence. Second paragraph.'
