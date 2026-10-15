@@ -39,6 +39,7 @@ class ArticleService:
         enrichment_pipeline: EnrichmentPipeline,
         configuration_loader=None,
         before_collection=None,
+        after_collection=None,
         collection_lock_factory=None,
     ) -> None:
 
@@ -48,6 +49,7 @@ class ArticleService:
         self._enrichment_pipeline = enrichment_pipeline
         self._configuration_loader = configuration_loader
         self._before_collection = before_collection
+        self._after_collection = after_collection
         self.collection_lock_factory = collection_lock_factory
 
     def _available_categories(
@@ -191,6 +193,14 @@ class ArticleService:
                       for o in observations]
             self._repository.save_collection([], failed)
             raise
+
+        if self._after_collection is not None:
+            try:
+                await self._after_collection()
+            except Exception:
+                # The archive/outbox already committed. Delivery failure is not
+                # a feed failure, and exception messages may contain credentials.
+                logger.error('Alert delivery failed; queued alerts can be retried')
 
         failures = sum(o.error is not None for o in observations)
         logger.info("Saved %d unique articles; %d feeds failed", len({article_key(a) for a in enriched}), failures)

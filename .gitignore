@@ -93,3 +93,6 @@ data/misp-galaxy/
 
 # Local PostgreSQL connection/password files
 *.secret
+
+# Private outgoing alert configuration
+data/alerts.json

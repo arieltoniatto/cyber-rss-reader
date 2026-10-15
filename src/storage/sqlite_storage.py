@@ -14,6 +14,7 @@ from storage.utils import article_from_dict, article_key, article_to_dict
 from feeds.models import FeedObservation
 from config.models import Feed
 from storage.migrations import migrate_sqlite
+from alerts.outbox import enqueue
 from storage.retention import RetentionPolicy, RetentionResult, prune
 
 
@@ -115,8 +116,10 @@ class SQLiteArticleRepository(ArticleRepository):
                 """, (str(feed.url), feed.name, feed.category, now))
 
     def save_collection(self, articles: list[Article], observations: list[FeedObservation]) -> RetentionResult | None:
-        """Commit articles and their collection outcomes together."""
+        """Commit articles, collection outcomes and optional alerts together."""
         with self._connection() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            enqueue(connection, articles, getattr(self, 'alert_settings', None), 'sqlite')
             self._upsert(connection, articles)
             if articles:
                 connection.execute("INSERT OR REPLACE INTO metadata VALUES ('last_refresh', ?)",

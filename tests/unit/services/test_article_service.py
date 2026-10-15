@@ -166,3 +166,17 @@ async def test_collection_reports_retention_removals(tmp_path):
     result = await service.update(force_refresh=True)
     assert result.articles_saved == 1 and result.articles_pruned == 1
     assert [a.title for a in repo.load()] == ['New']
+
+
+@pytest.mark.asyncio
+async def test_alert_delivery_failure_does_not_rollback_collection(tmp_path):
+    repo = SQLiteArticleRepository(tmp_path/'archive.sqlite3')
+    xml = b'<rss version="2.0"><channel><title>Feed</title><item><title>New</title><link>https://example.com/new</link></item></channel></rss>'
+    fetcher = AsyncMock()
+    fetcher.fetch_all.return_value = [FeedResult(feed=Feed(name='Source', url='https://example.com/feed'), parsed=feedparser.parse(xml))]
+    callback = AsyncMock(side_effect=RuntimeError('Sensitive configuration'))
+    service = ArticleService(repository=repo, fetcher=fetcher, parser=RSSParser(),
+                             enrichment_pipeline=EnrichmentPipeline(), after_collection=callback)
+    assert (await service.update(force_refresh=True)).articles_saved == 1
+    assert len(repo.load()) == 1
+    callback.assert_awaited_once()

@@ -901,6 +901,40 @@ when they appear again in a collection; archived entries absent from current
 feeds keep their existing text. A feed that publishes only a short excerpt
 cannot provide more text without visiting its article page.
 
+### Structured exports and outgoing alerts
+
+Use **Exportar página** in the web article view to download JSON, JSONL or CSV
+with the current search, filters, ordering and pagination. The API offers
+`GET /exports/articles?format=json&limit=1000`; the same authentication and
+request limits apply. Downloads include full stored feed text and extracted
+IOCs, actors, malware, ATT&CK and CVE IDs. Exporting never collects feeds.
+
+```bash
+rss export --format json --output articles.json --limit 1000
+rss export --format jsonl --threat-actor APT28 --output apt28.jsonl
+rss export --format csv --ioc-type cve --output vulnerabilities.csv
+rss export --q ransomware --match exact --period week --order newest
+```
+
+CLI/API exports default to 1,000 records and support 1–10,000 per request with
+`--offset`/`offset` for subsequent batches. The browser exports only the current
+page. CLI output goes to stdout unless `--output` is set; existing files are
+never overwritten. JSON has a version-1 envelope (`schema_version`,
+`exported_at`, `count`, `articles`); JSONL has one article record per line.
+CSV arrays/objects are JSON-encoded cells, with formula-like text neutralized
+for spreadsheets. UTC dates and stable article IDs are preserved. Exports
+reflect a single archive read; separate paginated requests are not a frozen
+snapshot when collection is running.
+
+Optional generic webhooks and Telegram alerts notify on newly collected
+matching article IDs. Configure destinations/rules in a private JSON file
+selected by `CYBER_RSS_ALERT_CONFIG`; credentials stay in environment variables.
+Alerts are disabled by default. A durable transactional outbox supports retries,
+leases, deduplication receipts and SQLite/PostgreSQL. Use `rss-alerts --status`
+or `GET /alerts/status` to inspect it; `rss-alerts --dispatch` sends one batch,
+and `rss-alerts --watch` runs an independent delivery loop. See
+[alert setup, payloads and delivery semantics](deploy/alerts/README.md).
+
 ### Article retention and schema migrations
 
 Retention is disabled by default. Configure the same values for CLI, API and
@@ -1309,10 +1343,13 @@ collector locks, with explicit SQLite import and a PostgreSQL Docker stack.
 Implemented: configurable age/size retention, read-only previews and versioned,
 transactional SQLite/PostgreSQL schema migrations.
 
+Implemented: JSON/JSONL/CSV exports in the CLI/API/web interface and opt-in
+generic webhook/Telegram alerts with durable delivery state.
+
 Potential next stages:
 - add full-article retrieval and summarization
 - provide authenticated API operations
-- add structured exports and alert integrations
+
 
 Roadmap items are proposals and are not part of the current `0.1.0` implementation.
 

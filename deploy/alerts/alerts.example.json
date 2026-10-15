@@ -1,0 +1,25 @@
+{
+  "timeout_seconds": 5,
+  "max_attempts": 3,
+  "batch_size": 20,
+  "destinations": [
+    {
+      "id": "soc-webhook",
+      "kind": "webhook",
+      "enabled": false,
+      "url_env": "CYBER_RSS_WEBHOOK_URL",
+      "token_env": "CYBER_RSS_WEBHOOK_TOKEN",
+      "include_summary": false,
+      "rules": {"tags": ["ransomware"]}
+    },
+    {
+      "id": "personal-telegram",
+      "kind": "telegram",
+      "enabled": false,
+      "token_env": "CYBER_RSS_TELEGRAM_TOKEN",
+      "chat_id_env": "CYBER_RSS_TELEGRAM_CHAT_ID",
+      "include_summary": true,
+      "rules": {"threat_actors": ["APT28"], "ioc_types": ["cve"]}
+    }
+  ]
+}

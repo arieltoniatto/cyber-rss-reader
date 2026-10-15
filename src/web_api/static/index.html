@@ -48,6 +48,12 @@
           <div class="results-heading"><div><h2 id="results-title">Últimos artigos</h2><span id="results-note">Preparando seu radar…</span></div><span id="active-category" class="pill category-pill" hidden></span></div>
           <div id="articles-message" class="empty-state" role="status" hidden></div>
           <div id="article-list" class="article-list" aria-live="polite" aria-busy="false"></div>
+          <div class="export-actions" aria-label="Exportar artigos">
+            <span>Exportar página:</span>
+            <a id="export-json" class="secondary-button" href="/exports/articles?format=json">JSON</a>
+            <a id="export-jsonl" class="secondary-button" href="/exports/articles?format=jsonl">JSONL</a>
+            <a id="export-csv" class="secondary-button" href="/exports/articles?format=csv">CSV</a>
+          </div>
           <div id="article-pagination" class="pagination"><button id="previous" class="secondary-button" type="button" disabled>← Anterior</button><span id="page-number">Página 1</span><button id="next" class="secondary-button" type="button" disabled>Próxima →</button></div>
         </section>
         <section id="backups-section" aria-label="Backups do arquivo" hidden>

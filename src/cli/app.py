@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typer
 
+from .commands.export import register as export_command
 from .commands.attack import register as attack_command
 from .commands.cve import register as cve_command
 from .commands.category import register as category_command
@@ -22,6 +23,7 @@ def create_cli(
         no_args_is_help=True,
     )
 
+    export_command(app, services)
     attack_command(app, services)
     cve_command(app, services)
     update_command(app, services)

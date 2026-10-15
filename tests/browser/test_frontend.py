@@ -603,3 +603,20 @@ def test_extended_feed_text_is_complete_in_details_and_short_in_list(page):
     assert len(page.locator('.detail-summary').inner_text()) > 2000
     page.reload()
     expect(page.locator('.detail-summary')).to_contain_text('End of extended feed content.')
+
+
+def test_export_downloads_follow_search_and_current_page(page):
+    page.get_by_label('Buscar artigos', exact=True).fill('malware')
+    page.get_by_role('button', name='Buscar', exact=False).click()
+    page.locator('#source').select_option('Source B')
+    expect(page.locator('#article-list')).to_have_attribute('aria-busy', 'false')
+    expect(page.locator('#export-json')).to_have_attribute('href', re.compile(r'category|source=Source\+B'))
+    with page.expect_download() as info:
+        page.locator('#export-json').click()
+    download = info.value
+    import json
+    from pathlib import Path
+    payload = json.loads(Path(download.path()).read_text())
+    assert download.suggested_filename == 'cyber-rss-articles.json'
+    assert payload['count'] == 13
+    assert all(item['source'] == 'Source B' for item in payload['articles'])

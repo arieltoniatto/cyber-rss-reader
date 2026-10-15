@@ -7,6 +7,7 @@ from parser.dates import normalize_datetime
 from storage.interfaces import ArticleRepository
 from storage.utils import article_from_dict, article_key, article_to_dict
 from storage.migrations import migrate_postgres
+from alerts.outbox import enqueue
 from storage.retention import RetentionPolicy, prune
 
 LOCK_KEYS = {'schema': 73941101, 'collector': 73941102, 'worker-instance': 73941103, 'feed-registry': 73941104, 'import': 73941105, 'retention': 73941106}
@@ -156,6 +157,7 @@ class PostgreSQLArticleRepository(ArticleRepository):
         with self._connection() as connection:
             if apply_retention:
                 connection.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK_KEYS['retention'],))
+            enqueue(connection, articles, getattr(self, 'alert_settings', None), 'postgresql')
             self._upsert(connection, articles)
             if articles:
                 self._set_metadata(connection,'last_refresh',datetime.now(timezone.utc).isoformat())

@@ -30,6 +30,8 @@ from cti.attack_mapping import AttackCatalog
 from cti.misp_galaxy_store import MispGalaxyStore
 from services.attack_service import AttackService
 from feeds.fetcher import RSSFetcher
+from alerts.service import AlertService
+from alerts.config import AlertSettings
 from parser.parser import RSSParser
 from search.engine import SearchEngine
 from services.article_service import ArticleService
@@ -152,6 +154,9 @@ class ApplicationContainer:
         # Services
         ################################################################
 
+        alert_settings = getattr(self.repository, 'alert_settings', AlertSettings())
+        self.alert_service = AlertService(self.repository, alert_settings) if alert_settings.active else None
+
         self.article_service = ArticleService(
             repository=self.repository,
             fetcher=self.fetcher,
@@ -159,6 +164,7 @@ class ApplicationContainer:
             enrichment_pipeline=self.enrichment_pipeline,
             configuration_loader=self.feed_registry.configuration if self.feed_registry else None,
             before_collection=self._refresh_threat_actor_catalog,
+            after_collection=self.alert_service.after_collection if self.alert_service else None,
             collection_lock_factory=lambda: collector_lock(self.lock_target),
         )
 

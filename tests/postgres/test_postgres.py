@@ -371,3 +371,22 @@ def test_postgres_legacy_upgrade_preserves_archive(repo):
     report=postgres_status(URL)
     assert report['current_version']==2 and not report['pending']
     assert [item['adopted'] for item in report['history']]==[True,False]
+
+
+def test_postgres_alert_queue_transaction_dedup_and_delivery(repo):
+    from alerts.config import AlertSettings, Destination
+    from alerts.service import AlertService
+    from alerts.outbox import AlertOutbox
+    repo.alert_settings = AlertSettings(destinations=[Destination(id='soc', url_env='SOC_URL')])
+    repo.save_collection([article(), article()], [])
+    assert AlertOutbox(repo).status()['pending'] == 1
+    repo.save_collection([replace(article(), title='Updated')], [])
+    assert AlertOutbox(repo).status()['pending'] == 1
+    with pytest.raises(AttributeError):
+        repo.save_collection([article(1), replace(article(2), tags=[None])], [])
+    assert AlertOutbox(repo).status()['pending'] == 1
+    calls = []
+    service = AlertService(repo, repo.alert_settings, sender=lambda *args: calls.append(args))
+    assert service.dispatch()['sent'] == 1
+    assert service.dispatch()['sent'] == 0
+    assert AlertOutbox(repo).status()['sent'] == 1 and len(calls) == 1

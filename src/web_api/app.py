@@ -30,6 +30,9 @@ from services.vulnerability_service import VulnerabilityService
 from search.engine import SearchEngine
 from search.models import SearchOrder, SearchPeriod, SearchMatch
 from services.search_service import SearchService
+from services.export_service import ExportFormat, MEDIA_TYPES, export_articles
+from alerts.outbox import AlertOutbox
+from parser.models import IOCType
 from storage.interfaces import ArticleRepository
 from storage.factory import create_repository, is_postgres
 from config.postgres_feed_registry import PostgreSQLFeedRegistry
@@ -246,6 +249,43 @@ def create_app(repository: ArticleRepository | None = None, *,
             'techniques': [], 'campaigns': [], 'relationships': []}
         return {**serialize(article), 'attack': asdict(mapping) if mapping else None, 'attack_details': details,
                 'vulnerabilities': app.state.vulnerabilities.for_article(article)}
+
+    @app.get('/exports/articles')
+    def export_archive(format: ExportFormat = ExportFormat.json,
+                       q: str | None = Query(None, min_length=1, max_length=500),
+                       category: str | None = Query(None, max_length=200),
+                       source: str | None = Query(None, max_length=200),
+                       tag: str | None = Query(None, max_length=200),
+                       ioc: str | None = Query(None, min_length=1, max_length=8192),
+                       ioc_type: IOCType | None = None,
+                       threat_actor: str | None = Query(None, min_length=1, max_length=200),
+                       limit: int = Query(1000, ge=1, le=10000),
+                       offset: int = Query(0, ge=0, le=1000000),
+                       order: SearchOrder = SearchOrder.newest,
+                       period: SearchPeriod = SearchPeriod.all,
+                       match: SearchMatch = SearchMatch.fuzzy,
+                       fuzzy_threshold: int = Query(80, ge=0, le=100)):
+        service = SearchService(repository=app.state.repository, engine=SearchEngine())
+        try:
+            rows = service.search(keyword=q, category=category, source=source, tag=tag,
+                ioc=ioc, ioc_type=ioc_type, threat_actor=threat_actor, limit=limit, offset=offset,
+                newest=order == SearchOrder.newest, oldest=order == SearchOrder.oldest,
+                today=period == SearchPeriod.today, last_week=period == SearchPeriod.week,
+                match_mode=match, fuzzy_threshold=fuzzy_threshold)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        return Response(export_articles(rows, format), media_type=MEDIA_TYPES[format],
+            headers={'Content-Disposition': f'attachment; filename="cyber-rss-articles.{format.value}"',
+                     'Cache-Control': 'no-store', 'X-Export-Count': str(len(rows)),
+                     'X-Export-Limit': str(limit), 'X-Export-Offset': str(offset)})
+
+    @app.get('/alerts/status')
+    def alerts_status(response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        try:
+            return AlertOutbox(app.state.repository).status()
+        except ValueError:
+            raise HTTPException(status_code=501, detail='Alerts require SQLite or PostgreSQL storage')
 
     @app.get("/articles")
     def articles(category: str | None = Query(None, max_length=200),

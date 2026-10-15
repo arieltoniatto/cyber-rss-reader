@@ -141,6 +141,10 @@
     const params=new URLSearchParams({limit:state.limit,offset:state.offset,order:state.order,period:state.period});
     for(const key of ["q","category","source","tag"]) if(state[key]) params.set(key,state[key]);
     if(state.q) {params.set("match",state.match);params.set("fuzzy_threshold",state.fuzzy_threshold);}
+    for(const format of ["json","jsonl","csv"]) {
+      const exportParams=new URLSearchParams(params); exportParams.set("format",format);
+      $("export-"+format).href="/exports/articles?"+exportParams;
+    }
     try {
       const data=await request((state.q ? "/search?" : "/articles?")+params,controller.signal);
       if(controller!==articleController) return;
