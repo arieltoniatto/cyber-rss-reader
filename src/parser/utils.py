@@ -70,14 +70,36 @@ def first_available(entry: Any, *fields: str) -> str | None:
     return None
 
 
-def article_text(entry: Any) -> str:
+def article_text(entry: Any, *, strip_kadence_prefix: bool = False) -> str:
     """Use the longest readable text embedded in the feed, without fetching URLs.
 
     feedparser normalizes RSS content:encoded and Atom content to a list of
     content records. Alternative formats/translations are candidates, rather
     than concatenated copies of the same article.
     """
-    candidates = [first_available(entry, "summary", "description") or ""]
+    def readable(value: str) -> str:
+        if strip_kadence_prefix:
+            # Malwarebytes sometimes publishes bare Kadence CSS before the
+            # first HTML element, so removing HTML tags alone leaves the CSS.
+            prefix, marker, body = value.lstrip().partition("<")
+            if marker and prefix.startswith(".kadence-") and prefix.rstrip().endswith("}"):
+                value = marker + body
+            if "<" in value and ">" in value:
+                soup = BeautifulSoup(value, "html.parser")
+                for node in soup.find_all(string=True):
+                    if (
+                        str(node).lstrip().startswith(".kadence-")
+                        and str(node).rstrip().endswith("}")
+                        and node.find_parent(["pre", "code"]) is None
+                        and node.find_parent(class_=lambda name: name and name.startswith("kadence-"))
+                        is not None
+                    ):
+                        node.extract()
+                value = str(soup)
+        return clean_html(value)
+
+    preview = getattr(entry, "summary", None) or getattr(entry, "description", None) or ""
+    candidates = [readable(str(preview))]
     content = entry.get("content", [])
     if not isinstance(content, (list, tuple)):
         return candidates[0]
@@ -92,7 +114,7 @@ def article_text(entry: Any) -> str:
             "text/plain", "text/html", "application/xhtml+xml",
         }:
             continue
-        candidates.append(clean_html(value))
+        candidates.append(readable(value))
     return max(candidates, key=len)
 
 

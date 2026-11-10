@@ -62,7 +62,12 @@ class RSSParser:
 
                     published=parse_published(entry),
 
-                    summary=article_text(entry),
+                    summary=article_text(
+                        entry,
+                        strip_kadence_prefix=feed_url.hostname in {
+                            "www.malwarebytes.com", "malwarebytes.com", "blog.malwarebytes.com",
+                        },
+                    ),
 
                     url=first_available(
                         entry,

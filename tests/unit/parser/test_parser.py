@@ -9,6 +9,41 @@ from parser.parser import RSSParser
 from parser.utils import parse_published
 
 
+@pytest.mark.parametrize("field", ["description", "content:encoded"])
+def test_malwarebytes_kadence_css_prefix_is_removed(field):
+    css = (
+        '.kadence-column123_ab > .kt-inside-inner-col{padding-top:20px;}'
+        '@media all and (max-width:767px){.kadence-column123_ab{display:flex;}}'
+    )
+    body = (
+        f'<div class="kadence-column123_ab"><div>{css}'
+        '<h2>In this article</h2><p>Research &amp; evidence.</p></div></div>'
+    )
+    xml = f'''<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+      <channel><title>Labs</title><item><title>Report</title>
+      <{field}><![CDATA[  {css}{body}]]></{field}>
+      </item></channel></rss>'''
+    parsed = feedparser.parse(xml.encode())
+    feed = Feed(name="Renamed Labs", url="https://www.malwarebytes.com/blog/feed/index.xml")
+    article = RSSParser().parse([FeedResult(feed=feed, parsed=parsed)])[0]
+    assert article.summary == "In this article Research & evidence."
+    # The publisher-specific workaround must not strip code from other feeds.
+    feed = Feed(name="Other", url="https://example.com/feed")
+    other = RSSParser().parse([FeedResult(feed=feed, parsed=parsed)])[0]
+    assert other.summary.startswith(".kadence-column123_ab")
+
+
+def test_malwarebytes_preserves_code_examples_and_plain_text():
+    from parser.utils import article_text
+    for value in [
+        '.kadence-example { color: red; }',
+        '<p>CSS example:</p><pre>.kadence-example { color: red; }</pre>',
+        'A report about CSS { and } with no layout prefix.',
+    ]:
+        entry = feedparser.FeedParserDict(summary=value)
+        assert article_text(entry, strip_kadence_prefix=True) == article_text(entry)
+
+
 def test_fallback_date_is_utc_datetime():
     assert parse_published({"published": "Fri, 02 Oct 2026 12:00:00 GMT"}) == datetime(2026, 10, 2, 12, tzinfo=timezone.utc)
     assert parse_published({"published": "invalid"}) is None
