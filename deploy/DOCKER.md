@@ -87,6 +87,18 @@ the terminal (with sudo, use `sudo env CYBER_RSS_WEB_PORT=8000 docker compose ..
 To return to native operation, stop Compose, then enable the three user services.
 Their original archive remains available independently of the Docker volume.
 
+## Base image updates
+
+The `Dockerfile` pins `python:3.12-slim-bookworm` by digest, so a rebuild uses
+exactly the same base image until you choose to update it. To pick up Python or
+Debian security updates, look up the current digest, replace it in both `FROM`
+lines, rebuild and run the tests:
+
+```bash
+docker buildx imagetools inspect python:3.12-slim-bookworm   # "Digest:" line
+docker compose up -d --build
+```
+
 ## Import the existing archive (optional)
 
 Before the first Docker startup, create a verified snapshot with the existing

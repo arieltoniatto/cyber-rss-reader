@@ -1,10 +1,14 @@
-FROM python:3.12-slim-bookworm AS builder
+# Base image pinned by the digest of its multi-arch index (Python 3.12.16), so
+# rebuilds are reproducible. Keep both stages on the same digest. To update:
+#   docker buildx imagetools inspect python:3.12-slim-bookworm
+# then replace the digest below and in the runtime stage.
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS builder
 WORKDIR /build
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ src/
 RUN pip wheel --no-cache-dir --wheel-dir /wheels '.[web,postgres]'
 
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     CYBER_RSS_DATA_DIR=/runtime
