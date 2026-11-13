@@ -101,3 +101,23 @@ def test_backup_and_restore_include_managed_feeds(settings, tmp_path):
     backup = create_backup(database, tmp_path / 'backups')
     restored = restore_backup(backup, tmp_path / 'restored.sqlite3')
     assert next(row for row in FeedRegistry(restored, directory).list() if row['id'] == saved['id']) == saved
+
+
+@pytest.mark.parametrize('url', ['http://127.0.0.1/feed', 'http://169.254.169.254/latest/meta-data',
+                                 'http://10.0.0.5/rss', 'http://[::1]/feed', 'http://localhost:8000/feed',
+                                 'http://metadata.localhost/feed'])
+def test_feed_urls_on_private_addresses_are_rejected(settings, monkeypatch, url):
+    monkeypatch.delenv('CYBER_RSS_ALLOW_PRIVATE_FEEDS', raising=False)
+    database, directory = settings
+    with TestClient(create_app(database_file=database, feed_directory=directory)) as client:
+        response = client.post('/feed-config', headers=HEADERS, json=value(url=url))
+        assert response.status_code == 422
+        assert client.get('/feed-config').json()['total'] == 2
+
+
+def test_private_feed_urls_are_accepted_when_explicitly_allowed(settings, monkeypatch):
+    monkeypatch.setenv('CYBER_RSS_ALLOW_PRIVATE_FEEDS', '1')
+    database, directory = settings
+    with TestClient(create_app(database_file=database, feed_directory=directory)) as client:
+        response = client.post('/feed-config', headers=HEADERS, json=value(url='http://192.168.1.20/feed'))
+        assert response.status_code == 201

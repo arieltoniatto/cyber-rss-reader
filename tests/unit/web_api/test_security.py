@@ -9,7 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from web_api.app import create_app
-from web_api.security import create_credentials, RequestBudget, SecuritySettings
+from web_api.security import (create_credentials, listener_is_protected, parse_networks, RequestBudget,
+                               SecuritySettings)
 
 
 @pytest.fixture
@@ -18,7 +19,7 @@ def credentials():
 
 
 @pytest.mark.parametrize('path', ['/', '/assets/app.js', '/articles', '/search?q=test',
-                                  '/feeds', '/health', '/docs', '/openapi.json'])
+                                  '/feeds', '/docs', '/openapi.json'])
 def test_every_http_route_requires_authentication_over_https(tmp_path, credentials, path):
     settings = SecuritySettings(credentials=credentials)
     with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3', security=settings),
@@ -35,7 +36,7 @@ def test_every_http_route_requires_authentication_over_https(tmp_path, credentia
 def test_http_never_challenges_or_accepts_credentials_and_ignores_spoofed_proxy(tmp_path, credentials):
     with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3',
                               security=SecuritySettings(credentials=credentials))) as client:
-        response = client.get('/health', auth=('reader', 'A strong test password é 123'),
+        response = client.get('/feeds', auth=('reader', 'A strong test password é 123'),
                               headers={'X-Forwarded-Proto': 'https'})
         assert response.status_code == 426
         assert 'www-authenticate' not in response.headers
@@ -47,7 +48,7 @@ def test_malformed_authentication_returns_401(tmp_path, credentials, header):
     with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3',
                               security=SecuritySettings(credentials=credentials)),
                     base_url='https://testserver') as client:
-        assert client.get('/health', headers={'Authorization': header}).status_code == 401
+        assert client.get('/feeds', headers={'Authorization': header}).status_code == 401
 
 
 def test_failed_login_rate_budget_cannot_be_bypassed_with_forwarded_ip(tmp_path, credentials):
@@ -55,10 +56,70 @@ def test_failed_login_rate_budget_cannot_be_bypassed_with_forwarded_ip(tmp_path,
     with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3', security=settings),
                     base_url='https://testserver') as client:
         for ip in ('1.2.3.4', '5.6.7.8'):
-            assert client.get('/health', headers={'X-Forwarded-For': ip}).status_code == 401
-        response = client.get('/health', auth=('reader', 'A strong test password é 123'))
+            assert client.get('/feeds', headers={'X-Forwarded-For': ip}).status_code == 401
+        response = client.get('/feeds', auth=('reader', 'A strong test password é 123'))
         assert response.status_code == 429
         assert int(response.headers['retry-after']) >= 1
+
+
+def test_health_check_is_public_over_http_but_other_routes_are_not(tmp_path, credentials):
+    with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3',
+                              security=SecuritySettings(credentials=credentials))) as client:
+        response = client.get('/health')
+        assert response.status_code == 200
+        assert response.json() == {'status': 'ok'}
+        assert 'www-authenticate' not in response.headers
+        assert client.get('/feeds').status_code == 426
+
+
+def test_trusted_proxy_terminating_tls_enables_authentication(tmp_path, credentials):
+    settings = SecuritySettings(credentials=credentials, trusted_proxies=parse_networks('10.0.0.0/8'))
+    auth = ('reader', 'A strong test password é 123')
+    with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3', security=settings),
+                    client=('10.1.2.3', 40000)) as client:
+        assert client.get('/feeds', auth=auth).status_code == 426
+        response = client.get('/feeds', headers={'X-Forwarded-Proto': 'https'})
+        assert response.status_code == 401
+        assert 'max-age=' in response.headers['strict-transport-security']
+        assert client.get('/feeds', auth=auth, headers={'X-Forwarded-Proto': 'https'}).status_code == 200
+
+
+def test_forwarded_headers_from_untrusted_peer_are_ignored(tmp_path, credentials):
+    settings = SecuritySettings(credentials=credentials, trusted_proxies=parse_networks('10.0.0.0/8'))
+    with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3', security=settings),
+                    client=('203.0.113.9', 40000)) as client:
+        response = client.get('/feeds', auth=('reader', 'A strong test password é 123'),
+                              headers={'X-Forwarded-Proto': 'https'})
+        assert response.status_code == 426
+
+
+def test_rate_budget_uses_real_client_behind_trusted_proxy_and_ignores_spoofed_entries(tmp_path):
+    settings = SecuritySettings(burst=1, per_minute=1, trusted_proxies=parse_networks('10.0.0.0/8, 35.191.0.0/16'))
+    with TestClient(create_app(database_file=tmp_path / 'archive.sqlite3', security=settings),
+                    client=('35.191.0.10', 40000)) as client:
+        assert client.get('/health', headers={'X-Forwarded-For': '198.51.100.1, 203.0.113.7, 10.0.0.2'}).status_code == 200
+        # Same real client with a different spoofed leading entry shares the budget.
+        assert client.get('/health', headers={'X-Forwarded-For': '192.0.2.44, 203.0.113.7'}).status_code == 429
+        assert client.get('/health', headers={'X-Forwarded-For': '203.0.113.8'}).status_code == 200
+
+
+def test_trusted_proxies_are_parsed_from_environment(monkeypatch):
+    monkeypatch.delenv('CYBER_RSS_AUTH_FILE', raising=False)
+    monkeypatch.setenv('CYBER_RSS_TRUSTED_PROXIES', '35.191.0.0/16, 130.211.0.0/22,34.120.1.1')
+    assert [str(n) for n in SecuritySettings.from_environment().trusted_proxies] == [
+        '35.191.0.0/16', '130.211.0.0/22', '34.120.1.1/32']
+    monkeypatch.setenv('CYBER_RSS_TRUSTED_PROXIES', 'not-a-network')
+    with pytest.raises(ValueError, match='trusted proxy'):
+        SecuritySettings.from_environment()
+
+
+def test_listener_protection_accepts_tls_or_trusted_proxy_only_with_credentials(credentials):
+    proxies = parse_networks('10.0.0.0/8')
+    assert not listener_is_protected(SecuritySettings(), tls=True)
+    assert not listener_is_protected(SecuritySettings(trusted_proxies=proxies), tls=False)
+    assert not listener_is_protected(SecuritySettings(credentials=credentials), tls=False)
+    assert listener_is_protected(SecuritySettings(credentials=credentials), tls=True)
+    assert listener_is_protected(SecuritySettings(credentials=credentials, trusted_proxies=proxies), tls=False)
 
 
 def test_budget_refills_separates_clients_enforces_global_cap_and_bounds_memory():

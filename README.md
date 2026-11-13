@@ -732,6 +732,21 @@ Add an item to an existing category file:
 
 No Python code changes are required.
 
+### Feed destinations must be public
+
+The collector only downloads feeds from public internet addresses. Every
+request, including each redirect, is checked: hosts that resolve to loopback,
+private (RFC 1918), link-local (such as the `169.254.169.254` cloud metadata
+service), carrier-grade NAT or other non-global ranges are refused, and the
+browser/API rejects such URLs when a source is saved. This prevents an edited
+feed URL from reaching internal services (SSRF).
+
+To collect from a feed hosted on your own network, set
+`CYBER_RSS_ALLOW_PRIVATE_FEEDS=1` for the API and the collector. In cloud
+deployments, keep this unset and also restrict egress at the network layer
+(for example a Kubernetes NetworkPolicy), because a DNS answer can change
+between the check and the connection.
+
 ### Disable a feed
 
 ```yaml
@@ -1049,7 +1064,7 @@ runs outside the HTTP event loop, following the
 | `GET /` | Browser frontend |
 | `GET /filters` | Available categories, sources and tags from the full archive |
 | `GET /articles/detail?id=...` | Article details by stable ID |
-| `GET /health` | Check archive access |
+| `GET /health` | Check archive access (no authentication, for load balancer health checks; still rate limited) |
 | `GET /backups` | Local snapshot list and retention |
 | `GET /backups/status` | Manual backup job state |
 | `POST /backups` | Generate a background snapshot with the intent header |
