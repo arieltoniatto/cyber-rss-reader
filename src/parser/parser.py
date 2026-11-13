@@ -5,7 +5,7 @@ import re
 from urllib.parse import urlsplit
 
 from feeds.models import FeedResult
-from parser.utils import article_text, parse_published, parse_tags
+from parser.utils import absolute_url, article_text, parse_published, parse_tags
 
 from .models import Article
 from .utils import (
@@ -38,6 +38,7 @@ class RSSParser:
                 feed_url.hostname == "isc.sans.edu"
                 and feed_url.path in {"/rssfeed.xml", "/rssfeed_full.xml"}
             )
+            nic_br = feed_url.hostname in {"www.nic.br", "nic.br"}
 
             for entry in feed.parsed.entries:
 
@@ -67,13 +68,17 @@ class RSSParser:
                         strip_kadence_prefix=feed_url.hostname in {
                             "www.malwarebytes.com", "malwarebytes.com", "blog.malwarebytes.com",
                         },
+                        unescape_nested_entities=nic_br,
                     ),
 
-                    url=first_available(
-                        entry,
-                        "link",
-                    )
-                    or "",
+                    url=absolute_url(
+                        first_available(
+                            entry,
+                            "link",
+                        )
+                        or "",
+                        feed_url,
+                    ),
 
                     tags=parse_tags(entry),
                 )

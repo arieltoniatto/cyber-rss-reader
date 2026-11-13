@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import html
 from typing import Any
+from urllib.parse import SplitResult, urlsplit
 from bs4 import BeautifulSoup
 from parser.dates import normalize_datetime
 
@@ -70,7 +71,12 @@ def first_available(entry: Any, *fields: str) -> str | None:
     return None
 
 
-def article_text(entry: Any, *, strip_kadence_prefix: bool = False) -> str:
+def article_text(
+    entry: Any,
+    *,
+    strip_kadence_prefix: bool = False,
+    unescape_nested_entities: bool = False,
+) -> str:
     """Use the longest readable text embedded in the feed, without fetching URLs.
 
     feedparser normalizes RSS content:encoded and Atom content to a list of
@@ -78,6 +84,14 @@ def article_text(entry: Any, *, strip_kadence_prefix: bool = False) -> str:
     than concatenated copies of the same article.
     """
     def readable(value: str) -> str:
+        if unescape_nested_entities:
+            # NIC.br escapes description entities more than once
+            # (&amp;amp;ccedil;), so a single unescape leaves &ccedil; behind.
+            for _ in range(3):
+                unescaped = html.unescape(value)
+                if unescaped == value:
+                    break
+                value = unescaped
         if strip_kadence_prefix:
             # Malwarebytes sometimes publishes bare Kadence CSS before the
             # first HTML element, so removing HTML tags alone leaves the CSS.
@@ -116,6 +130,22 @@ def article_text(entry: Any, *, strip_kadence_prefix: bool = False) -> str:
             continue
         candidates.append(readable(value))
     return max(candidates, key=len)
+
+
+def absolute_url(link: str, feed_url: SplitResult) -> str:
+    """Add the feed's scheme to links published without one.
+
+    NIC.br links read "nic.br/noticia/...", which browsers and the frontend
+    treat as relative paths. Only links starting with the feed's own host are
+    changed, so genuinely relative links are left alone.
+    """
+    if not link or urlsplit(link).scheme:
+        return link
+    host = link.split("/", 1)[0].lower()
+    feed_host = (feed_url.hostname or "").lower()
+    if host and host in {feed_host, feed_host.removeprefix("www.")}:
+        return f"{feed_url.scheme or 'https'}://{link}"
+    return link
 
 
 def parse_published(entry) -> datetime | None:
