@@ -1,0 +1,35 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss-api
+spec:
+  healthCheck:
+    type: HTTP
+    requestPath: /health
+    port: 8000
+    checkIntervalSec: 15
+    timeoutSec: 5
+  # Identity-Aware Proxy: only allowed Google identities reach the app.
+  # Grant roles/iap.httpsResourceAccessor to the team (see deploy/GKE.md).
+  iap:
+    enabled: true
+  # Cloud Armor policy with per-client rate limiting (see deploy/GKE.md).
+  securityPolicy:
+    name: cyber-rss-armor
+  timeoutSec: 120
+  connectionDraining:
+    drainingTimeoutSec: 30
+  logging:
+    enable: true
+    sampleRate: 1.0
+---
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss
+spec:
+  redirectToHttps:
+    enabled: true
+  sslPolicy: cyber-rss-tls

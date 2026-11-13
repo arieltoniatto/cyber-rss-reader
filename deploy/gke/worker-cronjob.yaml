@@ -1,0 +1,90 @@
+# Collection every six hours, one run at a time. The collector also holds a
+# PostgreSQL advisory lock, so a manual collection from the API cannot overlap.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss-collector
+  labels:
+    app.kubernetes.io/name: cyber-rss
+    app.kubernetes.io/component: collector
+spec:
+  schedule: "15 */6 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: cyber-rss
+            app.kubernetes.io/component: collector
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cyber-rss
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            # Native sidecar: stopped automatically when the collector exits.
+            - name: cloud-sql-proxy
+              image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+              restartPolicy: Always
+              args:
+                - --auto-iam-authn
+                - --private-ip
+                - --structured-logs
+                - --exit-zero-on-sigterm
+                - --port=5432
+                - --health-check
+                - --http-address=0.0.0.0
+                - --http-port=9090
+                - REPLACE_PROJECT_ID:REPLACE_REGION:REPLACE_SQL_INSTANCE
+              startupProbe:
+                httpGet: {path: /startup, port: 9090}
+                periodSeconds: 2
+                failureThreshold: 30
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              securityContext:
+                runAsUser: 65532
+                runAsGroup: 65532
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+          containers:
+            - name: collector
+              image: cyber-rss-reader
+              command: [python, -m, app.worker, --once]
+              envFrom:
+                - configMapRef:
+                    name: cyber-rss
+              resources:
+                requests: {cpu: 250m, memory: 768Mi}
+                limits: {memory: 1536Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - {name: runtime, mountPath: /runtime}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: runtime
+              emptyDir: {sizeLimit: 1Gi}
+            - name: tmp
+              emptyDir: {sizeLimit: 256Mi}

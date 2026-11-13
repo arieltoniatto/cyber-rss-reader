@@ -1,0 +1,82 @@
+# Requires GKE Dataplane V2 (default on Autopilot) or network policy enforcement.
+# Default deny for every pod in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: cyber-rss
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Only the Google load balancer (and its health checks) can reach the API, so
+# nothing inside the cluster can bypass IAP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: cyber-rss
+  name: api-ingress-from-load-balancer
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cyber-rss
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: {cidr: 35.191.0.0/16}
+        - ipBlock: {cidr: 130.211.0.0/22}
+      ports:
+        - {protocol: TCP, port: 8000}
+---
+# Outbound traffic: DNS, the GKE metadata server (Workload Identity tokens for
+# the Cloud SQL proxy), the Cloud SQL private IP, and the public internet on
+# HTTP(S) for feeds and Google APIs. Private and link-local ranges stay blocked,
+# backing up the application's SSRF checks against DNS rebinding.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: cyber-rss
+  name: egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cyber-rss
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        - ipBlock: {cidr: 169.254.20.10/32}  # NodeLocal DNSCache, when enabled
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock: {cidr: 169.254.169.254/32}
+      ports:
+        - {protocol: TCP, port: 80}
+    - to:
+        - ipBlock: {cidr: 169.254.169.252/32}
+      ports:
+        - {protocol: TCP, port: 988}
+    - to:
+        - ipBlock: {cidr: REPLACE_CLOUDSQL_PRIVATE_IP/32}
+      ports:
+        - {protocol: TCP, port: 3307}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 100.64.0.0/10
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+      ports:
+        - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 443}

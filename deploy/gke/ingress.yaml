@@ -1,0 +1,25 @@
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss
+spec:
+  domains:
+    - REPLACE_DOMAIN
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: cyber-rss-ip
+    networking.gke.io/managed-certificates: cyber-rss
+    networking.gke.io/v1beta1.FrontendConfig: cyber-rss
+spec:
+  defaultBackend:
+    service:
+      name: cyber-rss-api
+      port:
+        name: http

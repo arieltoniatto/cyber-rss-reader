@@ -1,0 +1,25 @@
+# GKE deployment for Cyber RSS Reader. See deploy/GKE.md before applying:
+# every REPLACE_* value must be filled in (grep -rn REPLACE_ deploy/gke).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cyber-rss
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: cyber-rss
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - api-pdb.yaml
+  - backendconfig.yaml
+  - ingress.yaml
+  - worker-cronjob.yaml
+  - networkpolicy.yaml
+images:
+  - name: cyber-rss-reader
+    newName: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT_ID/cyber-rss/cyber-rss-reader
+    # Deploy an immutable tag (the git commit SHA), never :latest.
+    newTag: REPLACE_GIT_SHA

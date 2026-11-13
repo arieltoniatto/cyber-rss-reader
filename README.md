@@ -1262,6 +1262,11 @@ User systemd units for the API, worker and daily backup are supplied under
 `deploy/systemd`. Render/install instructions, monitoring commands and recovery
 steps are documented in [deploy/README.md](deploy/README.md).
 
+For Google Kubernetes Engine, `deploy/gke/` provides Kustomize manifests for
+the API, a scheduled collector, Cloud SQL for PostgreSQL through the Cloud SQL
+Auth Proxy with IAM authentication, Identity-Aware Proxy and network policies.
+See [deploy/GKE.md](deploy/GKE.md).
+
 The services use an absolute runtime directory through `.env.services`, restart
 after unexpected exits, and share the existing SQLite archive. The backup timer
 runs daily and retains 14 verified snapshots by default. `rss-backup` includes

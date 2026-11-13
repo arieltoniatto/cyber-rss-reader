@@ -1,0 +1,17 @@
+# Non-secret settings shared by the API and the collector.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss
+data:
+  # IAM database authentication through the Cloud SQL Auth Proxy sidecar on
+  # localhost: the URL carries no password, so it does not need to be a Secret.
+  # The user is the Google service account e-mail without
+  # ".gserviceaccount.com", percent-encoded ("@" becomes "%40").
+  CYBER_RSS_DATABASE_URL: postgresql://cyber-rss%40REPLACE_PROJECT_ID.iam@127.0.0.1:5432/rss?sslmode=disable
+  # Google Front End proxy ranges plus the load balancer's own IP, so the rate
+  # limiter sees the real client address (see deploy/HTTPS.md).
+  CYBER_RSS_TRUSTED_PROXIES: 35.191.0.0/16,130.211.0.0/22,REPLACE_LB_IP
+  CYBER_RSS_RETENTION_DAYS: "0"
+  CYBER_RSS_RETENTION_MAX_ARTICLES: "0"

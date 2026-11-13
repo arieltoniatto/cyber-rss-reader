@@ -1,0 +1,74 @@
+# One-off pod for the initial SQLite -> Cloud SQL import (deploy/GKE.md).
+# Not part of the kustomization: apply it with the same REPLACE_* values,
+# copy the archive in, run rss-import-postgres, then delete the pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cyber-rss-import
+  namespace: cyber-rss
+  labels:
+    app.kubernetes.io/name: cyber-rss
+    app.kubernetes.io/component: import
+spec:
+  restartPolicy: Never
+  serviceAccountName: cyber-rss
+  automountServiceAccountToken: false
+  activeDeadlineSeconds: 7200
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  initContainers:
+    - name: cloud-sql-proxy
+      image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+      restartPolicy: Always
+      args:
+        - --auto-iam-authn
+        - --private-ip
+        - --structured-logs
+        - --exit-zero-on-sigterm
+        - --port=5432
+        - --health-check
+        - --http-address=0.0.0.0
+        - --http-port=9090
+        - REPLACE_PROJECT_ID:REPLACE_REGION:REPLACE_SQL_INSTANCE
+      startupProbe:
+        httpGet: {path: /startup, port: 9090}
+        periodSeconds: 2
+        failureThreshold: 30
+      resources:
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {memory: 256Mi}
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+  containers:
+    - name: import
+      image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT_ID/cyber-rss/cyber-rss-reader:REPLACE_GIT_SHA
+      command: [sleep, "7000"]
+      envFrom:
+        - configMapRef:
+            name: cyber-rss
+      resources:
+        requests: {cpu: 250m, memory: 768Mi}
+        limits: {memory: 2Gi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      volumeMounts:
+        - {name: runtime, mountPath: /runtime}
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: runtime
+      emptyDir: {sizeLimit: 4Gi}
+    - name: tmp
+      emptyDir: {sizeLimit: 256Mi}
