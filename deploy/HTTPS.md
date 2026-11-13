@@ -4,13 +4,16 @@ This is an optional configuration for access from other devices. For individual
 use on the same computer, use the loopback HTTP setup in [README.md](README.md).
 
 The local network entry point uses Uvicorn's native TLS. Every HTTP route,
-including the browser interface, static assets, health endpoint and API docs,
-requires HTTP Basic authentication once `CYBER_RSS_AUTH_FILE` is configured.
+including the browser interface, static assets and API docs, requires HTTP
+Basic authentication once `CYBER_RSS_AUTH_FILE` is configured. The only
+exception is `GET /health`, which load balancer health checks call over plain
+HTTP; it returns only `{"status": "ok"}` and is still rate limited.
 Passwords are stored as salted scrypt hashes; comparisons use constant-time
 operations. Cleartext requests never receive a password challenge. The API
-refuses to start a non-loopback listener without both authentication and TLS.
-Forwarded headers are disabled: clients cannot invent an IP address to obtain
-a fresh rate allowance or claim that a cleartext request used HTTPS.
+refuses to start a non-loopback listener without authentication and TLS
+(served directly, or terminated by a trusted proxy as described below).
+Forwarded headers are ignored by default: clients cannot invent an IP address
+to obtain a fresh rate allowance or claim that a cleartext request used HTTPS.
 
 ## Prepare and activate
 
@@ -111,6 +114,31 @@ cleanup script, which checks ownership before changing the rules:
 & '\\wsl.localhost\Ubuntu-24.04\home\lasgota\code\cyber-rss-reader\deploy\disable_lan_access.ps1' `
   -LanAddress 192.168.1.11 -WslAddress 172.21.19.251 -Port 8443
 ```
+
+## Behind a TLS-terminating proxy or load balancer
+
+When TLS ends at a reverse proxy or cloud load balancer (for example a GKE
+Ingress), the container receives plain HTTP. List the proxy addresses in
+`CYBER_RSS_TRUSTED_PROXIES` (comma-separated IPs or CIDR ranges). For requests
+whose direct peer is in that list, the API takes the scheme from
+`X-Forwarded-Proto` and the client address from `X-Forwarded-For`, reading the
+chain right to left and skipping trusted entries, so client-supplied entries
+cannot change the rate-limit identity. Requests from any other peer keep the
+default behavior.
+
+For the Google Cloud external Application Load Balancer, the proxies connect
+from `35.191.0.0/16` and `130.211.0.0/22`, and the load balancer appends its own
+forwarding-rule IP to `X-Forwarded-For`, so include that address as well:
+
+```bash
+CYBER_RSS_TRUSTED_PROXIES=35.191.0.0/16,130.211.0.0/22,<load-balancer-ip>
+```
+
+Only set this when the pod can be reached exclusively through the proxy
+(enforce it with a NetworkPolicy); otherwise anything able to connect from
+those ranges could claim HTTPS. Behind Identity-Aware Proxy (IAP), the API can
+run without `CYBER_RSS_AUTH_FILE`, but then the same NetworkPolicy is what keeps
+other workloads from bypassing IAP.
 
 ## Limits and maintenance
 

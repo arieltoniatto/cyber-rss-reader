@@ -108,7 +108,9 @@ def test_collection_uses_existing_authentication(tmp_path):
         assert client.get('/collection', auth=('reader', 'a-secure-test-password')).status_code == 200
 
 
-def test_manual_collection_downloads_and_persists_with_real_pipeline(tmp_path):
+def test_manual_collection_downloads_and_persists_with_real_pipeline(tmp_path, monkeypatch):
+    # The test feeds are served from a loopback server, which requires the opt-in.
+    monkeypatch.setenv('CYBER_RSS_ALLOW_PRIVATE_FEEDS', '1')
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from threading import Thread
     from app.container import ApplicationContainer

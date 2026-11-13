@@ -5,6 +5,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 import hashlib
 import hmac
+import ipaddress
 import json
 import math
 import os
@@ -37,8 +38,14 @@ class SecuritySettings:
     global_per_minute: int = 600
     global_burst: int = 60
     max_clients: int = 10000
+    # Reverse proxies / load balancers whose X-Forwarded-Proto and
+    # X-Forwarded-For headers are trusted (for example the GKE load balancer).
+    trusted_proxies: tuple = ()
 
     def __post_init__(self):
+        if not all(isinstance(network, (ipaddress.IPv4Network, ipaddress.IPv6Network))
+                   for network in self.trusted_proxies):
+            raise ValueError('Trusted proxies must be IP networks')
         if any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in
                (self.per_minute, self.burst, self.global_per_minute, self.global_burst, self.max_clients)):
             raise ValueError('Request limits must be positive integers')
@@ -59,10 +66,34 @@ class SecuritySettings:
                 raise ValueError('Authentication file must have permissions 0600')
             credentials = json.loads(file.read_text())
         return cls(credentials=credentials,
+                   trusted_proxies=parse_networks(os.environ.get('CYBER_RSS_TRUSTED_PROXIES', '')),
                    per_minute=int(os.environ.get('CYBER_RSS_RATE_PER_MINUTE', '120')),
                    burst=int(os.environ.get('CYBER_RSS_RATE_BURST', '30')),
                    global_per_minute=int(os.environ.get('CYBER_RSS_RATE_GLOBAL_PER_MINUTE', '600')),
                    global_burst=int(os.environ.get('CYBER_RSS_RATE_GLOBAL_BURST', '60')))
+
+
+def parse_networks(value: str) -> tuple:
+    """Parse a comma-separated list of IP addresses or CIDR ranges."""
+    networks = []
+    for item in value.split(','):
+        item = item.strip()
+        if item:
+            try:
+                networks.append(ipaddress.ip_network(item, strict=False))
+            except ValueError as exc:
+                raise ValueError(f'Invalid trusted proxy network: {item!r}') from exc
+    return tuple(networks)
+
+
+def listener_is_protected(settings: SecuritySettings, *, tls: bool) -> bool:
+    """A non-loopback listener needs credentials plus TLS, served directly or by a trusted proxy."""
+    return settings.credentials is not None and (tls or bool(settings.trusted_proxies))
+
+
+# Load balancer health checks probe over plain HTTP without credentials.
+# The endpoint only reports {"status": "ok"} and stays rate limited.
+PUBLIC_PATHS = frozenset({'/health'})
 
 
 class RequestBudget:
@@ -109,6 +140,37 @@ class AccessMiddleware:
         self.settings = settings
         self.budget = RequestBudget(settings)
 
+    def trusted(self, address: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return False
+        return any(ip in network for network in self.settings.trusted_proxies)
+
+    def forwarded(self, scope):
+        """Return (client, scheme), honoring forwarded headers only from trusted proxies."""
+        client = (scope.get('client') or ('unknown', 0))[0]
+        scheme = scope.get('scheme', 'http')
+        if not self.settings.trusted_proxies or not self.trusted(client):
+            return client, scheme
+        forwarded_for, forwarded_proto = [], None
+        for key, value in scope.get('headers', []):
+            key = key.lower()
+            if key == b'x-forwarded-for':
+                forwarded_for.extend(part.strip() for part in value.decode('latin-1').split(','))
+            elif key == b'x-forwarded-proto':
+                forwarded_proto = value.decode('latin-1').split(',')[-1].strip().lower()
+        # Walk right to left: entries appended by trusted proxies are skipped and
+        # the first untrusted address is the real client. Earlier entries are
+        # client-controlled and never used.
+        for address in reversed([part for part in forwarded_for if part]):
+            client = address
+            if not self.trusted(address):
+                break
+        if forwarded_proto in {'http', 'https'}:
+            scheme = forwarded_proto
+        return client, scheme
+
     def authenticate(self, authorization: str) -> bool:
         credentials = self.settings.credentials
         try:
@@ -128,11 +190,16 @@ class AccessMiddleware:
         if scope['type'] != 'http':
             await self.app(scope, receive, send)
             return
-        client = (scope.get('client') or ('unknown', 0))[0]
+        client, scheme = self.forwarded(scope)
+        if client != (scope.get('client') or ('unknown', 0))[0] or scheme != scope.get('scheme'):
+            scope = {**scope, 'client': (client, 0), 'scheme': scheme}
+        public = scope.get('path') in PUBLIC_PATHS and scope.get('method') in {'GET', 'HEAD'}
         retry = self.budget.allow(client)
         if retry:
             response = JSONResponse({'detail': 'Too many requests'}, status_code=429,
                                     headers={'Retry-After': str(retry), 'Cache-Control': 'no-store'})
+        elif public:
+            response = None
         elif self.settings.credentials and scope.get('scheme') != 'https':
             # Do not challenge for credentials over cleartext or trust raw forwarded headers.
             response = JSONResponse({'detail': 'HTTPS is required'}, status_code=426,

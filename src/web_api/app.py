@@ -39,7 +39,8 @@ from config.postgres_feed_registry import PostgreSQLFeedRegistry
 from storage.utils import article_key, article_to_dict
 from topics.algorithms.tfidf import TFIDFTopicExtractor
 from topics.extractor import TopicExtractionService
-from web_api.security import AccessMiddleware, SecuritySettings
+from web_api.security import AccessMiddleware, SecuritySettings, listener_is_protected
+from feeds.network import obviously_private_host, private_feeds_allowed
 
 
 class CollectionRequest(BaseModel):
@@ -65,6 +66,8 @@ class FeedInput(BaseModel):
     def no_credentials(cls, value):
         if value.username or value.password:
             raise ValueError('Use a URL without embedded credentials')
+        if value.host and obviously_private_host(value.host) and not private_feeds_allowed():
+            raise ValueError('Use a feed URL on a public address')
         return value
 
 
@@ -367,8 +370,9 @@ def main() -> None:
         loopback = ipaddress.ip_address(args.host).is_loopback
     except ValueError:
         loopback = args.host == 'localhost'
-    if not loopback and (settings.credentials is None or not certificate):
-        parser.error('Non-loopback listeners require authentication and TLS')
+    if not loopback and not listener_is_protected(settings, tls=bool(certificate)):
+        parser.error('Non-loopback listeners require authentication and TLS '
+                     '(direct, or terminated by a proxy listed in CYBER_RSS_TRUSTED_PROXIES)')
     uvicorn.run(create_app(database_file=args.database, security=settings), host=args.host, port=args.port,
                 ssl_certfile=str(certificate) if certificate else None,
                 ssl_keyfile=str(key) if key else None,
