@@ -75,6 +75,7 @@ def test_frontend_filters_detail_and_tagged_search(tmp_path):
         assert "script-src 'self'" in index.headers['content-security-policy']
         assert client.get('/assets/app.js').status_code == 200
         assert client.get('/assets/app.css').status_code == 200
+        assert client.get('/assets/images/sauter-logo-white.png').headers['content-type'] == 'image/png'
         filters = client.get('/filters').json()
         assert filters['total'] == 2
         assert {'value': 'Old source', 'count': 1} in filters['sources']
