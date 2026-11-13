@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss-api
+  labels:
+    app.kubernetes.io/name: cyber-rss
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cyber-rss
+      app.kubernetes.io/component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cyber-rss
+        app.kubernetes.io/component: api
+    spec:
+      serviceAccountName: cyber-rss
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Native sidecar (GKE 1.29+): starts before the API and keeps running.
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          restartPolicy: Always
+          args:
+            - --auto-iam-authn
+            - --private-ip
+            - --structured-logs
+            - --port=5432
+            - --health-check
+            - --http-address=0.0.0.0
+            - --http-port=9090
+            - REPLACE_PROJECT_ID:REPLACE_REGION:REPLACE_SQL_INSTANCE
+          startupProbe:
+            httpGet: {path: /startup, port: 9090}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /liveness, port: 9090}
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: api
+          image: cyber-rss-reader
+          # Same uvicorn command as the Dockerfile CMD: TLS and identity (IAP)
+          # are handled by the load balancer.
+          envFrom:
+            - configMapRef:
+                name: cyber-rss
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:
+            # The first start applies schema migrations.
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            # Database independent, so a database outage does not restart pods.
+            tcpSocket: {port: http}
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Let the load balancer drain this endpoint before shutdown.
+              exec: {command: [sleep, "15"]}
+          resources:
+            requests: {cpu: 250m, memory: 768Mi}
+            limits: {memory: 1536Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: runtime, mountPath: /runtime}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        # CVE cache and MISP Galaxy snapshot are per-pod caches.
+        - name: runtime
+          emptyDir: {sizeLimit: 1Gi}
+        - name: tmp
+          emptyDir: {sizeLimit: 256Mi}

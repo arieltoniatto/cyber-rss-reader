@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: cyber-rss
+  name: cyber-rss-api
+  labels:
+    app.kubernetes.io/name: cyber-rss
+    app.kubernetes.io/component: api
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "cyber-rss-api"}'
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cyber-rss
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
