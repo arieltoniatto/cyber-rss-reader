@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -41,6 +42,7 @@ from topics.algorithms.tfidf import TFIDFTopicExtractor
 from topics.extractor import TopicExtractionService
 from web_api.security import AccessMiddleware, SecuritySettings, listener_is_protected
 from feeds.network import obviously_private_host, private_feeds_allowed
+from config.structured_logging import configure_logging_from_environment
 
 
 class CollectionRequest(BaseModel):
@@ -86,6 +88,9 @@ def create_app(repository: ArticleRepository | None = None, *,
                attack_catalog_file: Path = ATTACK_MAPPING_CATALOG_FILE,
                vulnerability_service: VulnerabilityService | None = None,
                database_url: str | None = None) -> FastAPI:
+    # uvicorn has configured its own loggers by the time the factory runs;
+    # with CYBER_RSS_LOG_FORMAT=json they are rerouted through the JSON handler.
+    configure_logging_from_environment(logging.INFO)
     @asynccontextmanager
     async def lifespan(app):
         app.state.repository = (repository if repository is not None else
