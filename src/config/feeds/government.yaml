@@ -37,3 +37,9 @@ feeds:
     enabled: true
     description: Australian cybersecurity alerts and guidance.
     category: government
+
+  - name: NIC.br
+    url: https://www.nic.br/noticias/feed.rss
+    enabled: true
+    description: Brazilian Network Information Center news (CERT.br, Registro.br, CGI.br), in Brazilian Portuguese.
+    category: government

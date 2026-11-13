@@ -149,3 +149,35 @@ def test_content_only_feed_preserves_readable_text_and_ignores_markup():
         {'type': 'text/plain', 'value': 'Short version.'},
     ])
     assert article_text(entry) == 'Report & evidence. Second paragraph.'
+
+
+def test_nic_br_nested_entities_and_schemeless_links_are_fixed():
+    xml = '''<rss version="2.0"><channel><title>Noticias/rss</title><link>nic.br/</link>
+      <item><title>CERT.br atualiza guias de seguran&#xE7;a</title>
+      <link>nic.br/noticia/releases/cert-br-atualiza-guias/</link>
+      <description>Publica&amp;amp;ccedil;&amp;amp;otilde;es para crian&amp;amp;ccedil;as</description>
+      </item></channel></rss>'''
+    parsed = feedparser.parse(xml.encode())
+    feed = Feed(name="NIC.br", url="https://www.nic.br/noticias/feed.rss", category="government")
+    article = RSSParser().parse([FeedResult(feed=feed, parsed=parsed)])[0]
+    assert article.title == "CERT.br atualiza guias de segurança"
+    assert article.summary == "Publicações para crianças"
+    assert article.url == "https://nic.br/noticia/releases/cert-br-atualiza-guias/"
+    # Other feeds keep single unescaping and their relative links.
+    other = RSSParser().parse([FeedResult(feed=Feed(name="Other", url="https://example.com/feed"), parsed=parsed)])[0]
+    assert other.summary == "Publica&ccedil;&otilde;es para crian&ccedil;as"
+    assert other.url == "nic.br/noticia/releases/cert-br-atualiza-guias/"
+
+
+@pytest.mark.parametrize("link,expected", [
+    ("example.com/post/1", "https://example.com/post/1"),
+    ("www.example.com/post/1", "https://www.example.com/post/1"),
+    ("https://example.com/post/1", "https://example.com/post/1"),
+    ("other.org/post/1", "other.org/post/1"),
+    ("/post/1", "/post/1"),
+    ("", ""),
+])
+def test_absolute_url_only_adds_scheme_for_the_feed_host(link, expected):
+    from urllib.parse import urlsplit
+    from parser.utils import absolute_url
+    assert absolute_url(link, urlsplit("https://www.example.com/feed")) == expected
