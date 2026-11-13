@@ -87,6 +87,15 @@ The tag enricher:
 - extracts common cybersecurity keywords
 - extracts CVE identifiers as tags
 
+Keywords match whole words with their common inflections (`exploited`,
+`threat actors`, `vulnerabilities`), so `apt` no longer matches `capture` and
+`malware` no longer matches `Malwarebytes`. `APT` is case-sensitive, since
+lowercase "apt" is an ordinary English word. Portuguese variants produce the
+same English tags (`vulnerabilidade` → `vulnerability`, `vazamento de dados` →
+`data breach`, `dia zero` → `zero-day`), ignoring accents; English terms are
+matched in every article, including Portuguese ones. Use `rss-retag` to apply
+the current rules to articles collected before a rule change.
+
 #### IOC extraction
 
 The IOC enricher currently supports:
@@ -989,6 +998,23 @@ rejected; downgrades are unsupported. To evolve a schema, append a migration to
 `src/storage/migrations.py` and test upgrading existing versions and rollback.
 Do not edit previously applied migrations. SQLite versions 1/2 upgrade to 3;
 PostgreSQL version 1 upgrades to 2. Older SQLite snapshots remain restorable.
+
+### Re-tag stored articles
+
+Tags are extracted at collection time. After the keyword rules change, preview
+and then apply them to the stored archive:
+
+```bash
+rss-retag --database data/articles.sqlite3
+rss-retag --database data/articles.sqlite3 --apply
+```
+
+The preview opens the database read-only and reports how many articles change,
+removed/added counts per tag and a few examples (`--examples N`). `--apply`
+holds the collector lock and rewrites only tags, preserving `first_seen` and
+`last_seen`, so age-based retention is unaffected. A keyword tag is removed
+only when the previous substring rule explains it and the current rules do
+not; keyword tags supplied by the feed itself are kept. Make a backup first.
 
 ### HTTP API and collector
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+import unicodedata
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
 from parser.models import Article
@@ -11,25 +12,101 @@ _CVE_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
-_DEFAULT_KEYWORDS: tuple[str, ...] = (
-    "apt",
-    "botnet",
-    "credential theft",
-    "cyber espionage",
-    "data breach",
-    "ddos",
-    "exploit",
-    "infostealer",
-    "initial access",
-    "malware",
-    "phishing",
-    "ransomware",
-    "remote code execution",
-    "supply chain",
-    "threat actor",
-    "vulnerability",
-    "zero-day",
-)
+# A keyword must not be glued to other letters ("apt" inside "capture",
+# "malware" inside "Malwarebytes"), but digits and punctuation may surround it
+# ("APT28", "%20exploited").
+_BEFORE = r"(?<![^\W\d_])"
+_AFTER = r"(?![^\W\d_])"
+
+# Tags are always the English names below. Patterns run on text with accents
+# removed, so Portuguese variants are written without them. English terms are
+# matched in every article, since Portuguese articles also use them.
+_DEFAULT_RULES: dict[str, tuple[str, ...]] = {
+    "apt": (
+        # Case-sensitive: lowercase "apt" is an ordinary English adjective.
+        r"(?-i:APTs?)(?:[\s-]?\d+)?",
+        r"advanced\s+persistent\s+threats?",
+        r"ameacas?\s+persistentes?\s+avancadas?",
+    ),
+    "botnet": (
+        r"botnets?",
+    ),
+    "credential theft": (
+        r"credentials?\s+(?:theft|stealing|harvesting)",
+        r"stolen\s+credentials",
+        r"(?:roubos?|furtos?)\s+de\s+credenciais",
+        r"credenciais\s+(?:roubadas|furtadas)",
+    ),
+    "cyber espionage": (
+        r"cyber[\s-]?espionage",
+        r"ciberespionagem",
+        r"espionagem\s+(?:cibernetica|digital)",
+    ),
+    "data breach": (
+        r"data\s+breach(?:es)?",
+        r"vazamentos?\s+de\s+dados",
+        r"violac(?:ao|oes)\s+de\s+dados",
+    ),
+    "ddos": (
+        r"ddos(?:ed|ing)?",
+        r"distributed\s+denial[\s-]+of[\s-]+service",
+        r"negacao\s+de\s+servico\s+distribuid[ao]",
+    ),
+    "exploit": (
+        r"exploit(?:s|ed|ing|ations?|able|ability)?",
+        # "Explorar" is too generic on its own; require a nearby flaw.
+        r"explora(?:da|das|do|dos|cao|r|m|ndo|ram)\s+(?:\w+\s+){0,2}?(?:vulnerabilidades?|falhas?|brechas?)",
+        r"(?:vulnerabilidades?|falhas?|brechas?)\s+(?:\w+\s+){0,3}?explorad[ao]s?",
+    ),
+    "infostealer": (
+        r"info[\s-]?stealers?",
+        r"information\s+stealers?",
+    ),
+    "initial access": (
+        r"initial\s+access",
+        r"acesso\s+inicial",
+    ),
+    "malware": (
+        r"malwares?",
+        r"codigos?\s+maliciosos?",
+        r"softwares?\s+maliciosos?",
+    ),
+    "phishing": (
+        r"(?:spear[\s-]?)?phishing",
+    ),
+    "ransomware": (
+        r"ransomwares?",
+        # CISA advisory series, usually written "#StopRansomware".
+        r"stopransomware",
+        r"sequestros?\s+de\s+dados",
+    ),
+    "remote code execution": (
+        r"remote\s+code\s+execution",
+        r"(?-i:RCE)s?",
+        r"execucao\s+remota\s+de\s+codigo",
+    ),
+    "supply chain": (
+        r"supply[\s-]+chains?",
+        r"cadeias?\s+de\s+(?:suprimentos?|fornecimento|abastecimento)",
+    ),
+    "threat actor": (
+        r"threat\s+actors?",
+        r"(?:atores?|agentes?)\s+de\s+ameacas?",
+    ),
+    "vulnerability": (
+        r"vulnerabilit(?:y|ies)",
+        r"vulnerabilidades?",
+    ),
+    "zero-day": (
+        # "zero days" with a space is also ordinary English ("zero days left").
+        r"zero[\s-]?day",
+        r"zero-?days",
+        r"(?<!\d)0[\s-]?days?",
+        r"dias?[\s-]+zero",
+    ),
+}
+
+KEYWORD_TAGS: frozenset[str] = frozenset(_DEFAULT_RULES)
 
 
 class TagEnricher:
@@ -40,13 +117,27 @@ class TagEnricher:
     def __init__(
         self,
         keywords: Iterable[str] | None = None,
+        *,
+        rules: Mapping[str, Iterable[str]] | None = None,
     ) -> None:
-        configured_keywords = keywords or _DEFAULT_KEYWORDS
+        if rules is None:
+            # Plain keywords match as whole words, without inflections.
+            rules = (
+                {keyword: (r"\s+".join(map(re.escape, keyword.split())),) for keyword in keywords}
+                if keywords
+                else _DEFAULT_RULES
+            )
 
-        self._keywords = tuple(
-            normalized_keyword
-            for keyword in configured_keywords
-            if (normalized_keyword := self._normalize_tag(keyword))
+        self._rules = tuple(
+            (
+                normalized_tag,
+                re.compile(
+                    _BEFORE + "(?:" + "|".join(patterns) + ")" + _AFTER,
+                    flags=re.IGNORECASE,
+                ),
+            )
+            for tag, patterns in rules.items()
+            if (normalized_tag := self._normalize_tag(tag))
         )
 
     @property
@@ -59,15 +150,15 @@ class TagEnricher:
 
         The original frozen Article instance is not modified.
         """
-        content = self._build_searchable_content(article)
+        content = self.searchable_content(article)
 
         tags: list[str] = []
 
         tags.extend(article.tags)
-        tags.extend(self._extract_keyword_tags(content))
+        tags.extend(self.keyword_tags(content))
         tags.extend(self._extract_cve_tags(content))
 
-        normalized_tags = self._deduplicate_tags(tags)
+        normalized_tags = self.deduplicate_tags(tags)
 
         return replace(
             article,
@@ -75,7 +166,7 @@ class TagEnricher:
         )
 
     @staticmethod
-    def _build_searchable_content(article: Article) -> str:
+    def searchable_content(article: Article) -> str:
         parts = (
             article.title,
             article.summary,
@@ -87,14 +178,24 @@ class TagEnricher:
             if part is not None
         )
 
-    def _extract_keyword_tags(self, content: str) -> list[str]:
-        normalized_content = content.casefold()
+    def keyword_tags(self, content: str) -> list[str]:
+        normalized_content = self._strip_accents(content)
 
         return [
-            keyword
-            for keyword in self._keywords
-            if keyword.casefold() in normalized_content
+            tag
+            for tag, pattern in self._rules
+            if pattern.search(normalized_content)
         ]
+
+    @staticmethod
+    def _strip_accents(content: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", content)
+
+        return "".join(
+            character
+            for character in decomposed
+            if not unicodedata.combining(character)
+        )
 
     @staticmethod
     def _extract_cve_tags(content: str) -> list[str]:
@@ -103,7 +204,7 @@ class TagEnricher:
             for match in _CVE_PATTERN.findall(content)
         ]
 
-    def _deduplicate_tags(
+    def deduplicate_tags(
         self,
         tags: Iterable[str],
     ) -> list[str]:

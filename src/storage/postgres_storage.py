@@ -89,6 +89,14 @@ class PostgreSQLArticleRepository(ArticleRepository):
         with self._connection() as connection:
             self._upsert(connection, articles)
 
+    def update_tags(self, articles):
+        values = [(self._jsonb(article_to_dict(article)), [tag.casefold() for tag in article.tags],
+                   key_hash(article_key(article)), article_key(article)) for article in articles]
+        if values:
+            with self._connection() as connection, connection.cursor() as cursor:
+                cursor.executemany('UPDATE cyber_rss.articles SET payload=%s,tags=%s '
+                                   'WHERE key_hash=%s AND id=%s', values)
+
     def refresh(self, articles):
         if not articles:
             return

@@ -63,6 +63,12 @@ class SQLiteArticleRepository(ArticleRepository):
         with self._connection() as connection:
             self._upsert(connection, articles)
 
+    def update_tags(self, articles: list[Article]) -> None:
+        with self._connection() as connection:
+            connection.executemany("UPDATE articles SET payload=?, tags=? WHERE id=?", [
+                (json.dumps(article_to_dict(article)), json.dumps([tag.casefold() for tag in article.tags]),
+                 article_key(article)) for article in articles])
+
     def refresh(self, articles: list[Article]) -> None:
         if not articles:
             return
