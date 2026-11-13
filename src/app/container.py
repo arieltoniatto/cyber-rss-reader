@@ -6,6 +6,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from config.structured_logging import configure_logging_from_environment
 from config.paths import (
     ARTICLE_DATABASE_FILE,
     ATTACK_MAPPING_CATALOG_FILE,
@@ -192,6 +193,8 @@ class ApplicationContainer:
     def _configure_logging(
         log_level: int,
     ) -> None:
+        if configure_logging_from_environment(log_level):
+            return
         logging.basicConfig(
             level=log_level,
             format=(

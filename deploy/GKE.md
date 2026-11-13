@@ -230,6 +230,10 @@ kubectl -n cyber-rss get pods,cronjobs,jobs
 - **Probes and NetworkPolicy:** on GKE, kubelet probes from the node are not
   blocked by the policies here. If your cluster's network policy enforcement
   blocks them, allow the node CIDR to port 8000 and 9090.
+- **Logs:** the ConfigMap sets `CYBER_RSS_LOG_FORMAT=json`, so Cloud Logging
+  shows the real severity of each API and collector line and exceptions reach
+  Error Reporting. Filter with
+  `resource.labels.namespace_name="cyber-rss" severity>=WARNING`.
 - **Settings:** retention and other options go in `configmap.yaml`
   (see `.env.example`). Alert tokens are secrets: mount them from Secret Manager
   (for example with the Secret Manager add-on for GKE) instead of the ConfigMap.

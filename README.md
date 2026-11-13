@@ -1262,6 +1262,13 @@ User systemd units for the API, worker and daily backup are supplied under
 `deploy/systemd`. Render/install instructions, monitoring commands and recovery
 steps are documented in [deploy/README.md](deploy/README.md).
 
+Set `CYBER_RSS_LOG_FORMAT=json` for the API and collector to write one JSON
+object per line to stdout, including uvicorn's startup and access logs. Each
+line has `severity`, `message`, `time`, `logger` and source location fields that
+Google Cloud Logging reads directly; exceptions keep their stack trace in
+`message` for Error Reporting, and access logs add an `httpRequest` object. The
+default `text` format is unchanged.
+
 For Google Kubernetes Engine, `deploy/gke/` provides Kustomize manifests for
 the API, a scheduled collector, Cloud SQL for PostgreSQL through the Cloud SQL
 Auth Proxy with IAM authentication, Identity-Aware Proxy and network policies.

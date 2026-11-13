@@ -13,5 +13,7 @@ data:
   # Google Front End proxy ranges plus the load balancer's own IP, so the rate
   # limiter sees the real client address (see deploy/HTTPS.md).
   CYBER_RSS_TRUSTED_PROXIES: 35.191.0.0/16,130.211.0.0/22,REPLACE_LB_IP
+  # One JSON object per line with a severity field, parsed by Cloud Logging.
+  CYBER_RSS_LOG_FORMAT: json
   CYBER_RSS_RETENTION_DAYS: "0"
   CYBER_RSS_RETENTION_MAX_ARTICLES: "0"
