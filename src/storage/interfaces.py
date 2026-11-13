@@ -51,6 +51,14 @@ class ArticleRepository(ABC):
                                                   for t in a.tags)]
         return sorted(articles, key=publication_key, reverse=True)[offset:offset + limit]
 
+    def update_tags(self, articles: list[Article]) -> None:
+        """Rewrite tags of stored articles without marking them as seen again.
+
+        Unlike save(), first_seen/last_seen are preserved, because age-based
+        retention depends on them.
+        """
+        raise NotImplementedError('This storage backend does not support rewriting tags')
+
     @abstractmethod
     def save(self, articles: list[Article]) -> None:
         ...

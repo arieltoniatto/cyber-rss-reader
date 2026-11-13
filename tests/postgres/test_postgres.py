@@ -87,6 +87,18 @@ def test_postgres_filter_pagination_null_dates_unicode_and_injection_match_sqlit
     with pytest.raises(ValueError):repo.latest(offset=-1)
 
 
+def test_update_tags_preserves_observation_times(repo):
+    first=article()
+    repo.refresh([first])
+    query='SELECT first_seen,last_seen,tags FROM cyber_rss.articles'
+    with repo._connection() as connection:
+        before=connection.execute(query).fetchone()
+    repo.update_tags([replace(first,tags=['Research'])])
+    assert repo.load()[0].tags==['Research']
+    with repo._connection() as connection:
+        assert connection.execute(query).fetchone()==(*before[:2],['research'])
+
+
 def test_feed_status_success_error_stale_outcome_and_transaction_rollback(repo):
     feed=Feed(name='Source',url='https://example.com/rss',category='news')
     now=datetime.now(timezone.utc)

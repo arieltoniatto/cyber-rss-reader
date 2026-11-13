@@ -127,3 +127,69 @@ async def test_creates_a_separate_tags_list() -> None:
     result = await enricher.enrich(article)
 
     assert result.tags is not article.tags
+
+
+@pytest.mark.parametrize("text", [
+    # Real archive titles that used to be tagged by substring matches.
+    "Adapt your capture strategy on a laptop",
+    "Velociraptor CAPTCHA chapter",
+    "Malwarebytes Labs weekly roundup",
+    "Leaked files show up on DDoSecrets",
+    "Scan for SSH keys via Webexploits",
+    "Psychologically exploitative features",
+    "Forward suspicious messages to reportphishing@apple.com",
+    "He is apt to agree",
+    "Vamos explorar novas oportunidades",
+    "There were zero days of downtime",
+])
+def test_keywords_glued_to_other_letters_are_not_tags(text) -> None:
+    assert TagEnricher().keyword_tags(text) == []
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("APT28 and APT 41 target Europe", ["apt"]),
+    ("APTs abuse cloud services", ["apt"]),
+    ("Tactics that advanced persistent threats use", ["apt"]),
+    ("Flaw exploited in the wild; exploitation continues", ["exploit"]),
+    ("Advanced Web Attacks and Exploitations", ["exploit"]),
+    ("Link%20exploited by attackers", ["exploit"]),
+    ("Threat actors deploy botnets after data breaches", ["botnet", "data breach", "threat actor"]),
+    ("Critical vulnerabilities fixed", ["vulnerability"]),
+    ("#StopRansomware: ALPHV Blackcat", ["ransomware"]),
+    ("Model inspection RCE and a 0-Day memory leak", ["remote code execution", "zero-day"]),
+    ("Spear-phishing drops an info-stealer", ["infostealer", "phishing"]),
+])
+def test_english_variants_produce_the_canonical_tag(text, expected) -> None:
+    assert TagEnricher().keyword_tags(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Nova vulnerabilidade explorada em ataque de ransomware", ["exploit", "ransomware", "vulnerability"]),
+    ("Falha de segurança explorada por atores de ameaça", ["exploit", "threat actor"]),
+    ("Vazamento de dados expõe credenciais roubadas", ["credential theft", "data breach"]),
+    ("Ataque de dia zero contra a cadeia de suprimentos", ["supply chain", "zero-day"]),
+    ("Execução remota de código instala código malicioso", ["malware", "remote code execution"]),
+    ("Ameaça persistente avançada mira o governo", ["apt"]),
+    ("Negação de serviço distribuída e sequestro de dados", ["ddos", "ransomware"]),
+    ("Ciberespionagem com acesso inicial por phishing", ["cyber espionage", "initial access", "phishing"]),
+    # Portuguese articles also use English terms.
+    ("Campanha de phishing usa infostealer e exploit zero-day", ["exploit", "infostealer", "phishing", "zero-day"]),
+    ("Vulnerabilidades críticas no NIC.br; ransomware em alta", ["ransomware", "vulnerability"]),
+])
+def test_portuguese_text_produces_english_tags(text, expected) -> None:
+    assert TagEnricher().keyword_tags(text) == expected
+
+
+@pytest.mark.asyncio
+async def test_custom_keywords_match_whole_words() -> None:
+    enricher = TagEnricher(keywords=["wiper", "living off the land"])
+
+    article = create_article(
+        title="Wiper uses living  off the land binaries",
+        summary="Unrelated: swiper app.",
+    )
+
+    result = await enricher.enrich(article)
+
+    assert result.tags == ["living off the land", "wiper"]
+    assert enricher.keyword_tags("swiper app") == []
